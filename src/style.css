@@ -1,0 +1,102 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  background: #000;
+  overflow: hidden;
+}
+
+body {
+  font-family: ui-monospace, 'JetBrains Mono', Menlo, Consolas, monospace;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+canvas {
+  image-rendering: pixelated;
+}
+
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  color: #c5d4e6;
+}
+
+#location {
+  position: absolute;
+  top: 22px;
+  left: 26px;
+  font-size: 13px;
+  letter-spacing: 0.28em;
+  opacity: 0.85;
+  text-shadow: 0 0 8px rgba(54, 224, 255, 0.35);
+}
+
+#location .accent {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  background: #36e0ff;
+  margin-right: 10px;
+  box-shadow: 0 0 10px #36e0ff;
+}
+
+#hint {
+  position: absolute;
+  bottom: 20px;
+  right: 26px;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  opacity: 0.45;
+}
+
+#title-card {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  pointer-events: none;
+  color: #e8eef7;
+  animation: title-out 1.8s ease 2.8s forwards;
+}
+
+#title-card h1 {
+  font-size: clamp(22px, 4.5vw, 44px);
+  letter-spacing: 0.32em;
+  font-weight: 700;
+  text-shadow: 0 0 24px rgba(54, 224, 255, 0.4);
+}
+
+#title-card h1 span {
+  color: #ff3da0;
+  text-shadow: 0 0 18px #ff3da0;
+}
+
+#title-card p {
+  font-size: 12px;
+  letter-spacing: 0.5em;
+  text-transform: uppercase;
+  opacity: 0.5;
+}
+
+@keyframes title-out {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
