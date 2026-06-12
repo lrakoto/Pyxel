@@ -1,6 +1,8 @@
 import * as THREE from 'three';
-import { buildingTexture, groundTexture, midCityTexture, neonSignTexture, skyTexture } from './pixelTextures';
+import { facadeTexture, midCityTexture, neonSignTexture, skyTexture, streetTexture } from './pixelTextures';
 import { loadPlateTexture } from './plateTexture';
+import { buildForeground } from './foreground';
+import { buildStreetProps } from './props';
 
 export interface Updatable {
   update(dt: number): void;
@@ -55,27 +57,21 @@ class NeonSign implements Updatable {
   }
 }
 
-function addBuildingRow(
-  scene: THREE.Scene,
-  z: number,
-  count: number,
-  hMin: number,
-  hMax: number,
-  dim: number,
-) {
-  const span = 110;
-  for (let i = 0; i < count; i++) {
-    const w = 5 + Math.random() * 3.5;
-    const h = hMin + Math.random() * (hMax - hMin);
-    const x = -span / 2 + (i + 0.5) * (span / count) + (Math.random() - 0.5) * 3;
+function addBuildingRow(scene: THREE.Scene) {
+  // Loosely aligned with the SIGNS x positions so signs hang on buildings.
+  const xs = [-45, -36, -27.5, -18, -9.5, 1.5, 8, 16.5, 25, 34, 43];
+  xs.forEach((x, i) => {
+    const w = 6 + ((i * 7) % 5) * 0.6;
+    const h = 9 + ((i * 5) % 7);
     const material = new THREE.MeshBasicMaterial({
-      map: buildingTexture(Math.round(w * 1.6), Math.round(h * 1.6)),
+      map: facadeTexture(Math.round(w * 13), Math.round(h * 13)),
     });
-    material.color.setScalar(dim);
+    material.color.setScalar(0.82 + ((i * 3) % 4) * 0.05);
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), material);
-    mesh.position.set(x, h / 2, z);
+    // Slight depth stagger keeps the roofline from reading as one flat wall.
+    mesh.position.set(x, h / 2, -8.6 - (i % 3) * 0.5);
     scene.add(mesh);
-  }
+  });
 }
 
 export interface Sector7World {
@@ -117,7 +113,7 @@ export function buildSector7(): Sector7World {
   // the asphalt like a wet street.
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(130, 28),
-    new THREE.MeshStandardMaterial({ map: groundTexture(), roughness: 0.3, metalness: 0.2 }),
+    new THREE.MeshStandardMaterial({ map: streetTexture(), roughness: 0.3, metalness: 0.2 }),
   );
   ground.rotation.x = -Math.PI / 2;
   ground.position.set(0, 0, -4);
@@ -134,9 +130,8 @@ export function buildSector7(): Sector7World {
   midLayer.position.set(0, midHeight / 2, -30);
   scene.add(midLayer);
 
-  // The far skyline is the painted plate; one sparser 3D row in the
-  // mid-ground carries the signs and gives walking parallax against it.
-  addBuildingRow(scene, -8.6, 6, 6, 11, 0.85);
+  // Street-facing row: procedural facades (storefronts, lit windows, pipes).
+  addBuildingRow(scene);
 
   for (const spec of SIGNS) {
     const sign = new NeonSign(spec);
@@ -145,15 +140,12 @@ export function buildSector7(): Sector7World {
     signLights.push(sign.light);
   }
 
-  // Foreground pillars: strong near-layer parallax when walking past.
-  for (const px of [-12, -2.5, 7, 15]) {
-    const pillar = new THREE.Mesh(
-      new THREE.BoxGeometry(0.5, 9, 0.5),
-      new THREE.MeshStandardMaterial({ color: '#0b0d12', roughness: 0.8 }),
-    );
-    pillar.position.set(px, 4.5, 3.2);
-    scene.add(pillar);
-  }
+  updatables.push(...buildForeground(scene));
+
+  const street = buildStreetProps(scene);
+  updatables.push(...street.updatables);
+  // Vending screens tint Cole's wet rim just like the signs do.
+  signLights.push(...street.lights);
 
   scene.add(new THREE.AmbientLight('#2a3a5e', 0.8));
   const moon = new THREE.DirectionalLight('#42598a', 0.5);

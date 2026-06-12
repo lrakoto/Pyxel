@@ -47,7 +47,7 @@ export class Game {
     container.appendChild(this.renderer.domElement);
 
     this.camera = new THREE.PerspectiveCamera(38, VIEW_W / VIEW_H, 0.1, 200);
-    this.camera.position.set(0, 2.4, 13.5);
+    this.camera.position.set(0, 2.4, 16);
 
     const world = buildSector7();
     this.scene = world.scene;

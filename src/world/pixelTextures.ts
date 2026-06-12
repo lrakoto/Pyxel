@@ -39,20 +39,128 @@ export function spriteTexture(rows: string[], palette: Record<string, string>): 
 const WINDOW_WARM = '#d9a05a';
 const WINDOW_COOL = '#7fb8d9';
 
-export function buildingTexture(cols: number, rows: number, litRatio = 0.22): THREE.CanvasTexture {
-  const cell = 8;
-  const pad = 3;
-  return canvasTexture(cols * cell + pad * 2, rows * cell + pad * 2, (ctx, w, h) => {
-    ctx.fillStyle = '#101319';
-    ctx.fillRect(0, 0, w, h);
-    for (let y = 0; y < rows; y++) {
-      for (let x = 0; x < cols; x++) {
-        const lit = Math.random() < litRatio;
-        ctx.fillStyle = lit
-          ? (Math.random() < 0.5 ? WINDOW_WARM : WINDOW_COOL)
-          : '#161b24';
-        ctx.fillRect(pad + x * cell + 2, pad + y * cell + 2, cell - 4, cell - 3);
+interface FacadePalette {
+  wall: string;
+  shade: string;
+  trim: string;
+}
+
+const FACADE_PALETTES: FacadePalette[] = [
+  { wall: '#252b36', shade: '#1d222b', trim: '#2f3745' }, // blue-grey
+  { wall: '#2a2733', shade: '#211f29', trim: '#363344' }, // violet-grey
+  { wall: '#23292c', shade: '#1b2023', trim: '#2e3639' }, // teal-grey
+  { wall: '#2b2624', shade: '#211d1c', trim: '#383130' }, // warm grey
+];
+
+const CANOPY_HUES = ['#5a2730', '#1f4a4a', '#4a3a1f', '#33254a'];
+
+/**
+ * Street-facing building: floors of varied windows (lit ones get interior
+ * hints — curtains, blinds, shadow), AC units, grime streaks, a drain pipe,
+ * and a storefront ground floor with canopy, doorway, and shutter.
+ * Sized in pixels at ~13 px per world unit.
+ */
+export function facadeTexture(wPx: number, hPx: number): THREE.CanvasTexture {
+  return canvasTexture(wPx, hPx, (ctx) => {
+    const pal = FACADE_PALETTES[(Math.random() * FACADE_PALETTES.length) | 0];
+
+    ctx.fillStyle = pal.wall;
+    ctx.fillRect(0, 0, wPx, hPx);
+    for (let i = 0; i < wPx * hPx * 0.06; i++) {
+      ctx.fillStyle = Math.random() < 0.5 ? pal.shade : pal.trim;
+      ctx.globalAlpha = 0.35;
+      ctx.fillRect(Math.random() * wPx, Math.random() * hPx, 1.5, 1.5);
+    }
+    ctx.globalAlpha = 1;
+
+    // parapet
+    ctx.fillStyle = pal.shade;
+    ctx.fillRect(0, 0, wPx, 5);
+    ctx.fillStyle = pal.trim;
+    ctx.fillRect(0, 5, wPx, 1.5);
+
+    // window grid, one style per building
+    const groundH = 26;
+    const floorH = 15 + ((Math.random() * 3) | 0);
+    const style = (Math.random() * 3) | 0;
+    const winW = style === 2 ? 9 : 6;
+    const winH = style === 0 ? 10 : 7;
+    const gapX = 5 + ((Math.random() * 3) | 0);
+    const cols = Math.max(1, Math.floor((wPx - 6) / (winW + gapX)));
+    const startX = (wPx - cols * (winW + gapX) + gapX) / 2;
+
+    for (let fy = 9; fy + winH + 2 < hPx - groundH; fy += floorH) {
+      for (let c = 0; c < cols; c++) {
+        const wx = startX + c * (winW + gapX);
+        ctx.fillStyle = '#0c0f15';
+        ctx.fillRect(wx - 1, fy - 1, winW + 2, winH + 2);
+        const roll = Math.random();
+        if (roll < 0.3) {
+          ctx.fillStyle = Math.random() < 0.6 ? WINDOW_WARM : WINDOW_COOL;
+          ctx.fillRect(wx, fy, winW, winH);
+          ctx.fillStyle = 'rgba(0,0,0,0.35)';
+          if (Math.random() < 0.5) ctx.fillRect(wx, fy + winH * 0.55, winW, winH * 0.45);
+          if (Math.random() < 0.4) ctx.fillRect(wx + winW * 0.55, fy, winW * 0.45, winH);
+          if (Math.random() < 0.3) {
+            for (let b = fy + 1; b < fy + winH; b += 2.5) ctx.fillRect(wx, b, winW, 1);
+          }
+        } else {
+          ctx.fillStyle = roll < 0.65 ? '#101622' : '#0d1219';
+          ctx.fillRect(wx, fy, winW, winH);
+          ctx.fillStyle = 'rgba(110,140,180,0.12)';
+          ctx.fillRect(wx, fy, winW, 2);
+        }
+        ctx.fillStyle = pal.trim;
+        ctx.fillRect(wx - 1, fy + winH + 1, winW + 2, 1.5);
+        if (Math.random() < 0.35) {
+          ctx.fillStyle = 'rgba(8,10,14,0.4)';
+          ctx.fillRect(wx + ((Math.random() * winW) | 0), fy + winH + 2, 1.5, 4 + Math.random() * 6);
+        }
+        if (Math.random() < 0.22) {
+          ctx.fillStyle = '#3a4150';
+          ctx.fillRect(wx + 1, fy + winH + 2, 5, 4);
+          ctx.fillStyle = '#262c38';
+          ctx.fillRect(wx + 2, fy + winH + 3, 3, 2);
+        }
       }
+    }
+
+    // drain pipe down one edge
+    if (Math.random() < 0.55) {
+      const pipeX = Math.random() < 0.5 ? 2 : wPx - 4;
+      ctx.fillStyle = '#151a23';
+      ctx.fillRect(pipeX, 6, 2.5, hPx - 6);
+      ctx.fillStyle = '#0c0f15';
+      for (let py = 14; py < hPx; py += 22) ctx.fillRect(pipeX - 0.5, py, 3.5, 2);
+    }
+
+    // storefront ground floor
+    const gy = hPx - groundH;
+    ctx.fillStyle = pal.shade;
+    ctx.fillRect(0, gy, wPx, groundH);
+    ctx.fillStyle = CANOPY_HUES[(Math.random() * CANOPY_HUES.length) | 0];
+    ctx.fillRect(2, gy, wPx - 4, 4);
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(2, gy + 4, wPx - 4, 1.5);
+
+    const doorX = 6 + Math.random() * (wPx - 22);
+    const doorLit = Math.random() < 0.6;
+    ctx.fillStyle = '#0c0f15';
+    ctx.fillRect(doorX - 1, gy + 7, 11, groundH - 9);
+    ctx.fillStyle = doorLit ? '#d98e4a' : '#131a26';
+    ctx.fillRect(doorX, gy + 8, 9, groundH - 11);
+    if (doorLit) {
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(doorX + 6, gy + 8, 3, groundH - 11);
+    }
+
+    const shX = doorX > wPx / 2 ? 5 : doorX + 14;
+    const shW = Math.min(wPx - shX - 5, 18);
+    if (shW > 8) {
+      ctx.fillStyle = '#161b24';
+      ctx.fillRect(shX, gy + 8, shW, groundH - 12);
+      ctx.fillStyle = '#1f2530';
+      for (let sy = gy + 9; sy < gy + groundH - 5; sy += 3) ctx.fillRect(shX, sy, shW, 1);
     }
   });
 }
@@ -180,18 +288,52 @@ export function midCityTexture(): THREE.CanvasTexture {
   });
 }
 
-export function groundTexture(): THREE.CanvasTexture {
-  const size = 128;
-  const tex = canvasTexture(size, size, (ctx) => {
-    ctx.fillStyle = '#12151b';
-    ctx.fillRect(0, 0, size, size);
-    for (let i = 0; i < 900; i++) {
-      ctx.fillStyle = Math.random() < 0.5 ? '#0d1015' : '#181c24';
-      ctx.fillRect(Math.random() * size, Math.random() * size, 1.5, 1.5);
+/**
+ * Street surface, structured like the REPLACED reference: a concrete walkway
+ * along the buildings (texture top = far side), a lit curb edge, then rough
+ * wet asphalt toward the camera with specular glint pixels.
+ */
+export function streetTexture(): THREE.CanvasTexture {
+  const w = 256;
+  const h = 128;
+  const tex = canvasTexture(w, h, (ctx) => {
+    // walkway
+    ctx.fillStyle = '#171b22';
+    ctx.fillRect(0, 0, w, 56);
+    ctx.fillStyle = '#10141a';
+    for (let x = 0; x < w; x += 32) ctx.fillRect(x, 0, 1.5, 56);
+    ctx.fillRect(0, 26, w, 1);
+    for (let i = 0; i < 700; i++) {
+      ctx.fillStyle = Math.random() < 0.5 ? '#131720' : '#1c212b';
+      ctx.fillRect(Math.random() * w, Math.random() * 56, 1.5, 1.5);
+    }
+    // curb: lit face, drop shadow
+    ctx.fillStyle = '#3d4658';
+    ctx.fillRect(0, 56, w, 3);
+    ctx.fillStyle = '#05070b';
+    ctx.fillRect(0, 59, w, 2);
+    // asphalt rubble
+    ctx.fillStyle = '#0e1117';
+    ctx.fillRect(0, 61, w, h - 61);
+    const shades = ['#0a0d12', '#12161e', '#181d27', '#0c0f15'];
+    for (let i = 0; i < 2600; i++) {
+      ctx.fillStyle = shades[(Math.random() * shades.length) | 0];
+      ctx.fillRect(Math.random() * w, 61 + Math.random() * (h - 61), 1 + Math.random() * 2, 1 + Math.random());
+    }
+    // specular glints — bright single pixels that sparkle under the lights
+    for (let i = 0; i < 90; i++) {
+      ctx.fillStyle = Math.random() < 0.3 ? '#d8e4f4' : '#7e93b4';
+      ctx.globalAlpha = 0.5 + Math.random() * 0.5;
+      ctx.fillRect(Math.random() * w, 64 + Math.random() * (h - 66), 1.5, 1);
+    }
+    ctx.globalAlpha = 1;
+    // tar patches
+    for (let i = 0; i < 6; i++) {
+      ctx.fillStyle = 'rgba(5,7,10,0.5)';
+      ctx.fillRect(Math.random() * w, 65 + Math.random() * (h - 70), 14 + Math.random() * 30, 5 + Math.random() * 9);
     }
   });
   tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(18, 4);
+  tex.repeat.set(6, 1);
   return tex;
 }

@@ -7,6 +7,8 @@ export interface PlateOptions {
   posterize?: number;
   /** Multiplier applied before quantization, to seat bright plates into the scene's exposure. */
   brightness?: number;
+  /** Source crop as fractions (0–1) of the image, e.g. to cut a building out of its painted background. */
+  crop?: { x: number; y: number; w: number; h: number };
 }
 
 /**
@@ -23,14 +25,19 @@ export async function loadPlateTexture(url: string, opts: PlateOptions): Promise
     el.src = url;
   });
 
+  const crop = opts.crop ?? { x: 0, y: 0, w: 1, h: 1 };
+  const sx = crop.x * img.width;
+  const sy = crop.y * img.height;
+  const sw = crop.w * img.width;
+  const sh = crop.h * img.height;
   const w = opts.width;
-  const h = Math.round(w * (img.height / img.width));
+  const h = Math.round(w * (sh / sw));
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d')!;
   ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(img, 0, 0, w, h);
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
 
   const levels = opts.posterize ?? 0;
   const brightness = opts.brightness ?? 1;
