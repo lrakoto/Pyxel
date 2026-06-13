@@ -176,12 +176,16 @@ export interface Sector7World {
   scene: THREE.Scene;
   updatables: Updatable[];
   signLights: THREE.PointLight[];
+  /** Camera world position, copied in by the game loop each frame — the
+   *  specular sparkles need it to aim their reflections. */
+  viewPoint: THREE.Vector3;
 }
 
 export function buildSector7(): Sector7World {
   const scene = new THREE.Scene();
   const updatables: Updatable[] = [];
   const signLights: THREE.PointLight[] = [];
+  const viewPoint = new THREE.Vector3(0, 2.4, 16);
 
   scene.background = new THREE.Color('#04050b');
   scene.fog = new THREE.Fog('#0a0d18', 10, 72);
@@ -215,6 +219,8 @@ export function buildSector7(): Sector7World {
   );
   ground.rotation.x = -Math.PI / 2;
   ground.position.set(0, 0, -4);
+  // The ground would block the mirrored view from below.
+  ground.userData.noReflect = true;
   scene.add(ground);
 
   // 3D mid-distance city blocks, then a flat silhouette strip further back
@@ -230,11 +236,8 @@ export function buildSector7(): Sector7World {
   scene.add(farStrip);
 
   // Street-facing row: procedural facades (storefronts, lit windows, pipes)
-  // on 3D volumes, plus twinkling window-sill glints.
+  // on 3D volumes. Sill sparkle points are wired up after all lights exist.
   const sillPoints = addBuildingRow(scene);
-  const sillSparkles = new Sparkles(sillPoints, { size: 0.07, maxOpacity: 0.4 });
-  scene.add(sillSparkles.group);
-  updatables.push(sillSparkles);
 
   for (const spec of SIGNS) {
     const sign = new NeonSign(spec);
@@ -258,10 +261,40 @@ export function buildSector7(): Sector7World {
   scene.add(spill);
   signLights.push(spill);
 
+  // Light-driven sparkles, created last so they sample every light in the
+  // scene (signs, vending screens, spill). Brightness and hue come from
+  // whatever neon actually reaches each fleck.
+  const asphaltPts: THREE.Vector3[] = [];
+  for (let i = 0; i < 36; i++) {
+    asphaltPts.push(new THREE.Vector3(-18 + Math.random() * 36, 0.06, -4 + Math.random() * 10));
+  }
+  const curbPts: THREE.Vector3[] = [];
+  for (let i = 0; i < 16; i++) {
+    curbPts.push(new THREE.Vector3(-20 + Math.random() * 40, 0.12, -5.3));
+  }
+  const sparkleSets = [
+    new Sparkles(asphaltPts, signLights, viewPoint),
+    new Sparkles(curbPts, signLights, viewPoint, {
+      normal: new THREE.Vector3(0, 0.55, 0.84),
+      size: 0.06,
+    }),
+    new Sparkles(sillPoints, signLights, viewPoint, {
+      normal: new THREE.Vector3(0, 0, 1),
+      size: 0.06,
+      maxOpacity: 0.55,
+      lightScale: 0.45,
+    }),
+    new Sparkles(street.propTops, signLights, viewPoint, { size: 0.06, maxOpacity: 0.7 }),
+  ];
+  for (const s of sparkleSets) {
+    scene.add(s.group);
+    updatables.push(s);
+  }
+
   scene.add(new THREE.AmbientLight('#2a3a5e', 0.8));
   const moon = new THREE.DirectionalLight('#42598a', 0.5);
   moon.position.set(4, 10, 6);
   scene.add(moon);
 
-  return { scene, updatables, signLights };
+  return { scene, updatables, signLights, viewPoint };
 }

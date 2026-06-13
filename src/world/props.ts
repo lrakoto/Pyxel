@@ -16,6 +16,12 @@ export interface PropSpec {
   hue?: string;
 }
 
+/**
+ * Toggle: soft additive glow pools under the signs. Sits alongside the
+ * mirror puddles in puddles.ts — turn off to judge the reflections alone.
+ */
+export const PUDDLE_GLOW = true;
+
 export const STREET_PROPS: PropSpec[] = [
   { type: 'vending', x: -11.2, hue: '#36e0ff' },
   { type: 'vending', x: 6.7, hue: '#ff3da0' },
@@ -192,49 +198,130 @@ class Puddle implements Updatable {
 }
 
 export interface SparkleOptions {
-  color?: string;
   size?: number;
-  /** Lay the flecks flat on the ground instead of facing the camera. */
-  flat?: boolean;
   maxOpacity?: number;
+  /** Scales reflected energy into sparkle brightness. */
+  lightScale?: number;
+  /** Base surface normal for the set (ground = up, sills = facing camera…). */
+  normal?: THREE.Vector3;
+  /** Micro-facet spread: how far each fleck's facet tilts off the base normal. */
+  jitter?: number;
+  /** Specular exponent — higher = tighter, rarer, brighter alignments. */
+  shininess?: number;
 }
 
+const SPARKLE_WHITE = new THREE.Color('#ffffff');
+const UP = new THREE.Vector3(0, 1, 0);
+const _normal = new THREE.Vector3();
+const _toLight = new THREE.Vector3();
+const _reflected = new THREE.Vector3();
+const _toCam = new THREE.Vector3();
+
 /**
- * Tiny additive flecks that twinkle at random phases — the per-pixel water
- * sparkle from the reference street shot. Generic over placement: asphalt,
- * curb edge, window sills, prop tops.
+ * Specular glints, physically modeled: every fleck is a micro-facet with a
+ * fixed random tilt off the surface normal. Each frame it reflects every
+ * point light off its facet and lights up only when the bounce aims at the
+ * camera — so glints flash as the camera tracks, take the color of the light
+ * they reflect, dim when their sign flickers, and hold steady (with a faint
+ * rain-ripple wobble) when the view is still. No random twinkle.
  */
 export class Sparkles implements Updatable {
   readonly group = new THREE.Group();
-  private readonly items: { mat: THREE.MeshBasicMaterial; phase: number; speed: number }[] = [];
+  private readonly items: {
+    pos: THREE.Vector3;
+    facet: THREE.Vector3;
+    mat: THREE.MeshBasicMaterial;
+    phase: number;
+    wobble: number;
+  }[] = [];
   private readonly maxOpacity: number;
+  private readonly lightScale: number;
+  private readonly shininess: number;
   private t = 0;
 
-  constructor(points: THREE.Vector3[], opts: SparkleOptions = {}) {
-    this.maxOpacity = opts.maxOpacity ?? 0.55;
-    const size = opts.size ?? 0.09;
-    const geo = new THREE.PlaneGeometry(size, size * 0.55);
+  constructor(
+    points: THREE.Vector3[],
+    private readonly lights: THREE.PointLight[],
+    private readonly viewPoint: THREE.Vector3,
+    opts: SparkleOptions = {},
+  ) {
+    this.maxOpacity = opts.maxOpacity ?? 0.9;
+    this.lightScale = opts.lightScale ?? 0.6;
+    this.shininess = opts.shininess ?? 140;
+    this.group.userData.noReflect = true;
+    const base = opts.normal ?? UP;
+    const jitter = opts.jitter ?? 0.25;
+    const size = opts.size ?? 0.07;
+    const geo = new THREE.PlaneGeometry(size, size * 0.45);
     for (const p of points) {
       const mat = new THREE.MeshBasicMaterial({
-        color: opts.color ?? '#cfe0f4',
         transparent: true,
         opacity: 0,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       });
       const mesh = new THREE.Mesh(geo, mat);
-      if (opts.flat) mesh.rotation.x = -Math.PI / 2;
       mesh.position.copy(p);
       this.group.add(mesh);
-      this.items.push({ mat, phase: Math.random() * 10, speed: 0.6 + Math.random() * 1.8 });
+      const facet = base
+        .clone()
+        .add(
+          new THREE.Vector3(
+            (Math.random() - 0.5) * jitter,
+            (Math.random() - 0.5) * jitter,
+            (Math.random() - 0.5) * jitter,
+          ),
+        )
+        .normalize();
+      this.items.push({
+        pos: mesh.position,
+        facet,
+        mat,
+        phase: Math.random() * 10,
+        wobble: 0.3 + Math.random() * 0.6,
+      });
     }
   }
 
   update(dt: number) {
     this.t += dt;
     for (const it of this.items) {
-      const s = Math.sin(this.t * it.speed + it.phase);
-      it.mat.opacity = Math.max(0, s) ** 3 * this.maxOpacity;
+      // faint ripple: rain perturbs the facet slightly over time
+      _normal
+        .set(
+          it.facet.x + Math.sin(this.t * it.wobble + it.phase) * 0.02,
+          it.facet.y,
+          it.facet.z + Math.cos(this.t * it.wobble * 0.7 + it.phase) * 0.02,
+        )
+        .normalize();
+      _toCam.copy(this.viewPoint).sub(it.pos).normalize();
+
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let total = 0;
+      for (const light of this.lights) {
+        _toLight.copy(light.position).sub(it.pos);
+        const d2 = Math.max(1, _toLight.lengthSq());
+        _toLight.normalize();
+        const ndl = _normal.dot(_toLight);
+        if (ndl <= 0) continue;
+        _reflected.copy(_normal).multiplyScalar(2 * ndl).sub(_toLight);
+        const align = _reflected.dot(_toCam);
+        if (align <= 0) continue;
+        const spec = align ** this.shininess;
+        if (spec < 0.001) continue;
+        const w = (light.intensity / d2) * spec;
+        r += light.color.r * w;
+        g += light.color.g * w;
+        b += light.color.b * w;
+        total += w;
+      }
+      it.mat.opacity = Math.min(1, total * this.lightScale) * this.maxOpacity;
+      if (total > 0.0001) {
+        const peak = Math.max(r, g, b);
+        it.mat.color.setRGB(r / peak, g / peak, b / peak).lerp(SPARKLE_WHITE, 0.35);
+      }
     }
   }
 }
@@ -252,6 +339,8 @@ export interface StreetProps {
   updatables: Updatable[];
   /** Glowing prop lights, fed into the player's wet-rim shader. */
   lights: THREE.PointLight[];
+  /** Sparkle anchor points on top of the props (built in sector7 once all lights exist). */
+  propTops: THREE.Vector3[];
 }
 
 export function buildStreetProps(scene: THREE.Scene): StreetProps {
@@ -301,13 +390,16 @@ export function buildStreetProps(scene: THREE.Scene): StreetProps {
       case 'steam': {
         const vent = new SteamVent(steamTex);
         vent.group.position.set(spec.x, 0, PROP_Z + 1.5);
+        vent.group.userData.noReflect = true;
         scene.add(vent.group);
         updatables.push(vent);
         break;
       }
       case 'puddle': {
+        if (!PUDDLE_GLOW) break;
         const puddle = new Puddle(spec.hue ?? '#36e0ff');
         puddle.mesh.position.set(spec.x, 0.012, PROP_Z + 1);
+        puddle.mesh.userData.noReflect = true;
         scene.add(puddle.mesh);
         updatables.push(puddle);
         break;
@@ -325,25 +417,5 @@ export function buildStreetProps(scene: THREE.Scene): StreetProps {
     }
   }
 
-  // asphalt flecks
-  const asphalt: THREE.Vector3[] = [];
-  for (let i = 0; i < 30; i++) {
-    asphalt.push(new THREE.Vector3(-18 + Math.random() * 36, 0.02, -4 + Math.random() * 10));
-  }
-  // glints along the lit curb edge
-  const curb: THREE.Vector3[] = [];
-  for (let i = 0; i < 14; i++) {
-    curb.push(new THREE.Vector3(-20 + Math.random() * 40, 0.1, -5.32));
-  }
-  const sets = [
-    new Sparkles(asphalt, { flat: true }),
-    new Sparkles(curb, { size: 0.07, maxOpacity: 0.5, color: '#dfe9f8' }),
-    new Sparkles(propTops, { size: 0.07, maxOpacity: 0.5 }),
-  ];
-  for (const s of sets) {
-    scene.add(s.group);
-    updatables.push(s);
-  }
-
-  return { updatables, lights };
+  return { updatables, lights, propTops };
 }

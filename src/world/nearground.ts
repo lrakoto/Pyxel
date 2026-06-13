@@ -35,6 +35,11 @@ function soft(tex: THREE.Texture): THREE.MeshBasicMaterial {
   });
 }
 
+function noReflect<T extends THREE.Object3D>(obj: T): T {
+  obj.userData.noReflect = true;
+  return obj;
+}
+
 export function buildNearground(scene: THREE.Scene) {
   const poleTex = blurredTexture(64, 256, 5, (ctx) => {
     ctx.fillStyle = 'rgba(4, 6, 10, 0.95)';
@@ -48,11 +53,11 @@ export function buildNearground(scene: THREE.Scene) {
   });
 
   for (const x of [-20, -8, 14, 27]) {
-    const pole = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 8), soft(poleTex));
+    const pole = noReflect(new THREE.Mesh(new THREE.PlaneGeometry(1.5, 8), soft(poleTex)));
     pole.position.set(x, 2.6, NEAR_Z);
     scene.add(pole);
   }
-  const slab = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 8), soft(slabTex));
+  const slab = noReflect(new THREE.Mesh(new THREE.PlaneGeometry(2.6, 8), soft(slabTex)));
   slab.position.set(3.5, 2.4, NEAR_Z + 0.3);
   scene.add(slab);
 
@@ -68,7 +73,7 @@ export function buildNearground(scene: THREE.Scene) {
       ctx.fillRect(Math.random() * 512, 34 + Math.random() * 24, 4, 2);
     }
   });
-  const band = new THREE.Mesh(new THREE.PlaneGeometry(46, 2), soft(bandTex));
+  const band = noReflect(new THREE.Mesh(new THREE.PlaneGeometry(46, 2), soft(bandTex)));
   band.position.set(0, 0.15, 8.2);
   scene.add(band);
 }

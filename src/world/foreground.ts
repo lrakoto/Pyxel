@@ -34,6 +34,7 @@ class Wire implements Updatable {
     // Light enough to silhouette against dark facades, still darker than sky.
     this.object = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: '#1a2233' }));
     this.object.frustumCulled = false;
+    this.object.userData.noReflect = true;
     this.layout(0);
   }
 
@@ -77,6 +78,7 @@ function buildPole(x: number): THREE.Group {
   group.add(transformer);
   group.position.set(x, 0, POLE_Z);
   group.rotation.z = (Math.random() - 0.5) * 0.035;
+  group.userData.noReflect = true;
   return group;
 }
 

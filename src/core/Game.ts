@@ -10,8 +10,9 @@ import {
   VignetteEffect,
 } from 'postprocessing';
 import { Player } from '../world/Player';
+import { PuddleSystem } from '../world/puddles';
 import { Rain } from '../world/Rain';
-import { buildSector7, type Updatable } from '../world/sector7';
+import { buildSector7, type Sector7World, type Updatable } from '../world/sector7';
 
 // The frame is rendered at a fixed low resolution, then upscaled with
 // image-rendering: pixelated — that mix of chunky pixels and smooth HDR
@@ -29,8 +30,10 @@ export class Game {
   private readonly playerLight: THREE.PointLight;
   private readonly rain: Rain;
   private readonly rainFar: Rain;
+  private readonly puddles: PuddleSystem;
   private readonly updatables: Updatable[];
   private readonly signLights: THREE.PointLight[];
+  private readonly world: Sector7World;
   private readonly keys = new Set<string>();
   private readonly clock = new THREE.Clock();
   private camX = 0;
@@ -51,6 +54,7 @@ export class Game {
     this.camera.position.set(0, 2.4, 16);
 
     const world = buildSector7();
+    this.world = world;
     this.scene = world.scene;
     this.updatables = world.updatables;
     this.signLights = world.signLights;
@@ -76,6 +80,14 @@ export class Game {
       opacity: 0.15,
     });
     this.scene.add(this.rainFar.object);
+    this.rain.object.userData.noReflect = true;
+    this.rainFar.object.userData.noReflect = true;
+
+    // Mirror puddles: marked last so the reflection layer covers the whole
+    // assembled scene (buildings, signs, props, Cole, lights).
+    this.puddles = new PuddleSystem();
+    this.scene.add(this.puddles.group);
+    this.puddles.markReflectables(this.scene);
 
     this.composer = new EffectComposer(this.renderer, {
       frameBufferType: THREE.HalfFloatType,
@@ -133,7 +145,10 @@ export class Game {
     this.camX += (this.player.x * 0.9 - this.camX) * Math.min(1, dt * 3);
     this.camera.position.x = this.camX;
     this.camera.lookAt(this.camX, 2.0, 0);
+    this.world.viewPoint.copy(this.camera.position);
 
+    this.puddles.update(this.camera, dt);
+    this.puddles.render(this.renderer, this.scene);
     this.composer.render(dt);
   }
 }
