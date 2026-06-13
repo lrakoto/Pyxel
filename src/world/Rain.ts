@@ -1,30 +1,55 @@
 import * as THREE from 'three';
 
-const COUNT = 360;
-const TOP = 13;
-const SPAN_X = 34;
-const Z_MIN = -14;
-const Z_MAX = 5.5;
-const VEL_X = -2.4;
-const VEL_Y = -19;
-const TAIL = 0.011; // seconds of travel rendered as the streak length
+export interface RainOptions {
+  count?: number;
+  /** Respawn height. */
+  top?: number;
+  /** Horizontal spawn spread around the camera. */
+  spanX?: number;
+  zMin?: number;
+  zMax?: number;
+  velX?: number;
+  velY?: number;
+  /** Seconds of travel rendered as the streak length. */
+  tail?: number;
+  opacity?: number;
+}
 
-/** Wind-blown rain streaks rendered as additive line segments. */
+const DEFAULTS: Required<RainOptions> = {
+  count: 260,
+  top: 13,
+  spanX: 34,
+  zMin: -14,
+  zMax: 5.5,
+  velX: -2.4,
+  velY: -19,
+  tail: 0.011,
+  opacity: 0.32,
+};
+
+/**
+ * Wind-blown rain streaks rendered as additive line segments. Instantiated
+ * twice: a fast near layer around the street, and a slow sparse layer deep
+ * in the scene in front of the painted skyline.
+ */
 export class Rain {
   readonly object: THREE.LineSegments;
 
-  private readonly heads = new Float32Array(COUNT * 3);
+  private readonly o: Required<RainOptions>;
+  private readonly heads: Float32Array;
   private readonly positions: THREE.BufferAttribute;
 
-  constructor() {
-    for (let i = 0; i < COUNT; i++) this.spawn(i, 0, Math.random() * TOP);
+  constructor(options: RainOptions = {}) {
+    this.o = { ...DEFAULTS, ...options };
+    this.heads = new Float32Array(this.o.count * 3);
+    for (let i = 0; i < this.o.count; i++) this.spawn(i, 0, Math.random() * this.o.top);
     const geometry = new THREE.BufferGeometry();
-    this.positions = new THREE.BufferAttribute(new Float32Array(COUNT * 6), 3);
+    this.positions = new THREE.BufferAttribute(new Float32Array(this.o.count * 6), 3);
     geometry.setAttribute('position', this.positions);
     const material = new THREE.LineBasicMaterial({
       color: 0x5a7a9e,
       transparent: true,
-      opacity: 0.32,
+      opacity: this.o.opacity,
       blending: THREE.AdditiveBlending,
     });
     this.object = new THREE.LineSegments(geometry, material);
@@ -32,18 +57,19 @@ export class Rain {
   }
 
   private spawn(i: number, camX: number, y: number) {
-    this.heads[i * 3] = camX + (Math.random() - 0.5) * SPAN_X;
+    this.heads[i * 3] = camX + (Math.random() - 0.5) * this.o.spanX;
     this.heads[i * 3 + 1] = y;
-    this.heads[i * 3 + 2] = Z_MIN + Math.random() * (Z_MAX - Z_MIN);
+    this.heads[i * 3 + 2] = this.o.zMin + Math.random() * (this.o.zMax - this.o.zMin);
   }
 
   update(dt: number, camX: number) {
     const arr = this.positions.array as Float32Array;
-    for (let i = 0; i < COUNT; i++) {
-      this.heads[i * 3] += VEL_X * dt;
-      this.heads[i * 3 + 1] += VEL_Y * dt;
+    const { velX, velY, tail, top } = this.o;
+    for (let i = 0; i < this.o.count; i++) {
+      this.heads[i * 3] += velX * dt;
+      this.heads[i * 3 + 1] += velY * dt;
       if (this.heads[i * 3 + 1] < 0) {
-        this.spawn(i, camX, TOP - Math.random() * 2);
+        this.spawn(i, camX, top - Math.random() * 2);
       }
       const x = this.heads[i * 3];
       const y = this.heads[i * 3 + 1];
@@ -51,8 +77,8 @@ export class Rain {
       arr[i * 6] = x;
       arr[i * 6 + 1] = y;
       arr[i * 6 + 2] = z;
-      arr[i * 6 + 3] = x - VEL_X * TAIL;
-      arr[i * 6 + 4] = y - VEL_Y * TAIL;
+      arr[i * 6 + 3] = x - velX * tail;
+      arr[i * 6 + 4] = y - velY * tail;
       arr[i * 6 + 5] = z;
     }
     this.positions.needsUpdate = true;

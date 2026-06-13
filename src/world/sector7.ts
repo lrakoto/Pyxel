@@ -1,8 +1,17 @@
 import * as THREE from 'three';
-import { facadeTexture, midCityTexture, neonSignTexture, skyTexture, streetTexture } from './pixelTextures';
+import {
+  facadeTexture,
+  midBuildingTexture,
+  midCityTexture,
+  neonSignTexture,
+  sideWallTexture,
+  skyTexture,
+  streetTexture,
+} from './pixelTextures';
 import { loadPlateTexture } from './plateTexture';
 import { buildForeground } from './foreground';
-import { buildStreetProps } from './props';
+import { buildNearground } from './nearground';
+import { buildStreetProps, Sparkles } from './props';
 
 export interface Updatable {
   update(dt: number): void;
@@ -57,21 +66,110 @@ class NeonSign implements Updatable {
   }
 }
 
-function addBuildingRow(scene: THREE.Scene) {
+/**
+ * Street-facing row as real volumes: textured front face plus dark 3D sides
+ * that show themselves in perspective as the camera tracks, with water
+ * tanks, ducts, and masts cluttering the visible rooflines.
+ * Returns sill points for the window-ledge sparkles.
+ */
+function addBuildingRow(scene: THREE.Scene): THREE.Vector3[] {
+  const sillPoints: THREE.Vector3[] = [];
+  const sideMat = new THREE.MeshBasicMaterial({ map: sideWallTexture() });
+  const topMat = new THREE.MeshBasicMaterial({ color: '#0a0d12' });
+  const darkMat = new THREE.MeshBasicMaterial({ color: '#0c0f15' });
+  const DEPTH = 3.5;
   // Loosely aligned with the SIGNS x positions so signs hang on buildings.
   const xs = [-45, -36, -27.5, -18, -9.5, 1.5, 8, 16.5, 25, 34, 43];
   xs.forEach((x, i) => {
     const w = 6 + ((i * 7) % 5) * 0.6;
     const h = 9 + ((i * 5) % 7);
-    const material = new THREE.MeshBasicMaterial({
+    const frontMat = new THREE.MeshBasicMaterial({
       map: facadeTexture(Math.round(w * 13), Math.round(h * 13)),
     });
-    material.color.setScalar(0.82 + ((i * 3) % 4) * 0.05);
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), material);
-    // Slight depth stagger keeps the roofline from reading as one flat wall.
-    mesh.position.set(x, h / 2, -8.6 - (i % 3) * 0.5);
+    frontMat.color.setScalar(0.82 + ((i * 3) % 4) * 0.05);
+    const frontZ = -8.6 - (i % 3) * 0.5;
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(w, h, DEPTH),
+      [sideMat, sideMat, topMat, darkMat, frontMat, darkMat],
+    );
+    mesh.position.set(x, h / 2, frontZ - DEPTH / 2);
     scene.add(mesh);
+
+    // roof clutter where the roofline is actually visible
+    if (h <= 12) {
+      const tank = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.2, 1.1), darkMat);
+      tank.position.set(x - w / 4, h + 0.6, frontZ - 1.5);
+      scene.add(tank);
+      const duct = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.9), topMat);
+      duct.position.set(x + w / 4, h + 0.25, frontZ - 1.2);
+      scene.add(duct);
+      if (i % 2 === 0) {
+        const mast = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.4, 0.12), darkMat);
+        mast.position.set(x + w / 3, h + 1.2, frontZ - 1);
+        scene.add(mast);
+      }
+    }
+
+    for (let s = 0; s < 2; s++) {
+      sillPoints.push(
+        new THREE.Vector3(x - w / 4 + (Math.random() * w) / 2, 1.5 + Math.random() * (h - 3), frontZ + 0.03),
+      );
+    }
   });
+  return sillPoints;
+}
+
+/** Slow red blink on a rooftop mast. */
+class Beacon implements Updatable {
+  readonly mesh: THREE.Mesh;
+  private readonly mat: THREE.MeshBasicMaterial;
+  private t = Math.random() * 10;
+
+  constructor(pos: THREE.Vector3) {
+    this.mat = new THREE.MeshBasicMaterial({ color: '#ff4455', transparent: true });
+    this.mesh = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.22), this.mat);
+    this.mesh.position.copy(pos);
+  }
+
+  update(dt: number) {
+    this.t += dt;
+    this.mat.opacity = 0.15 + 0.85 * Math.max(0, Math.sin(this.t * 1.6)) ** 4;
+  }
+}
+
+/**
+ * Mid-distance row as individual 3D masses, sunk below the horizon so they
+ * read as grounded city blocks behind the street rather than floating.
+ */
+function addMidRow(scene: THREE.Scene): Updatable[] {
+  const updatables: Updatable[] = [];
+  const sideMat = new THREE.MeshBasicMaterial({ color: '#0a0d13' });
+  const DEPTH = 5;
+  for (let i = 0; i < 12; i++) {
+    const x = -50 + i * 9 + (Math.random() - 0.5) * 3;
+    const w = 8 + Math.random() * 6;
+    const h = 8 + Math.random() * 9;
+    const frontMat = new THREE.MeshBasicMaterial({
+      map: midBuildingTexture(Math.round(w * 6), Math.round(h * 6)),
+    });
+    const z = -24 - (i % 3) * 2.2;
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(w, h, DEPTH),
+      [sideMat, sideMat, sideMat, sideMat, frontMat, sideMat],
+    );
+    mesh.position.set(x, h / 2 - 2, z - DEPTH / 2);
+    scene.add(mesh);
+
+    if (i % 4 === 1) {
+      const mast = new THREE.Mesh(new THREE.BoxGeometry(0.25, 3.5, 0.25), sideMat);
+      mast.position.set(x + w / 4, h - 2 + 1.75, z - 2);
+      scene.add(mast);
+      const beacon = new Beacon(new THREE.Vector3(x + w / 4, h - 2 + 3.6, z - 2));
+      scene.add(beacon.mesh);
+      updatables.push(beacon);
+    }
+  }
+  return updatables;
 }
 
 export interface Sector7World {
@@ -119,19 +217,24 @@ export function buildSector7(): Sector7World {
   ground.position.set(0, 0, -4);
   scene.add(ground);
 
-  // Mid-distance silhouette strip between the street and the painted
-  // skyline; scene fog hazes it about halfway for depth.
-  const midWidth = 170;
-  const midHeight = midWidth * (160 / 1024);
-  const midLayer = new THREE.Mesh(
-    new THREE.PlaneGeometry(midWidth, midHeight),
+  // 3D mid-distance city blocks, then a flat silhouette strip further back
+  // (sunk below the horizon so neither reads as floating).
+  updatables.push(...addMidRow(scene));
+  const farWidth = 190;
+  const farHeight = farWidth * (160 / 1024);
+  const farStrip = new THREE.Mesh(
+    new THREE.PlaneGeometry(farWidth, farHeight),
     new THREE.MeshBasicMaterial({ map: midCityTexture(), transparent: true }),
   );
-  midLayer.position.set(0, midHeight / 2, -30);
-  scene.add(midLayer);
+  farStrip.position.set(0, farHeight / 2 - 4, -38);
+  scene.add(farStrip);
 
-  // Street-facing row: procedural facades (storefronts, lit windows, pipes).
-  addBuildingRow(scene);
+  // Street-facing row: procedural facades (storefronts, lit windows, pipes)
+  // on 3D volumes, plus twinkling window-sill glints.
+  const sillPoints = addBuildingRow(scene);
+  const sillSparkles = new Sparkles(sillPoints, { size: 0.07, maxOpacity: 0.4 });
+  scene.add(sillSparkles.group);
+  updatables.push(sillSparkles);
 
   for (const spec of SIGNS) {
     const sign = new NeonSign(spec);
@@ -141,11 +244,19 @@ export function buildSector7(): Sector7World {
   }
 
   updatables.push(...buildForeground(scene));
+  buildNearground(scene);
 
   const street = buildStreetProps(scene);
   updatables.push(...street.updatables);
   // Vending screens tint Cole's wet rim just like the signs do.
   signLights.push(...street.lights);
+
+  // Warm storefront spill raking across the walkway — the orange key light
+  // from the reference frame.
+  const spill = new THREE.PointLight('#ff9a4a', 20, 15, 2);
+  spill.position.set(-4.5, 2, -5);
+  scene.add(spill);
+  signLights.push(spill);
 
   scene.add(new THREE.AmbientLight('#2a3a5e', 0.8));
   const moon = new THREE.DirectionalLight('#42598a', 0.5);

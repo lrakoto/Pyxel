@@ -288,6 +288,53 @@ export function midCityTexture(): THREE.CanvasTexture {
   });
 }
 
+/** Shared dark side-wall for the 3D building boxes: noise + faint floor lines. */
+export function sideWallTexture(): THREE.CanvasTexture {
+  return canvasTexture(32, 128, (ctx) => {
+    ctx.fillStyle = '#0d1118';
+    ctx.fillRect(0, 0, 32, 128);
+    for (let i = 0; i < 260; i++) {
+      ctx.fillStyle = Math.random() < 0.5 ? '#0a0d13' : '#11161f';
+      ctx.fillRect(Math.random() * 32, Math.random() * 128, 1.5, 1.5);
+    }
+    ctx.fillStyle = '#0a0d13';
+    for (let y = 8; y < 128; y += 16) ctx.fillRect(0, y, 32, 1);
+  });
+}
+
+/** Individual mid-distance building front: dark mass, sparse dim windows. */
+export function midBuildingTexture(wPx: number, hPx: number): THREE.CanvasTexture {
+  return canvasTexture(wPx, hPx, (ctx) => {
+    const shade = 13 + ((Math.random() * 5) | 0);
+    ctx.fillStyle = `rgb(${shade}, ${shade + 3}, ${shade + 9})`;
+    ctx.fillRect(0, 0, wPx, hPx);
+    ctx.fillStyle = 'rgba(7, 9, 14, 0.9)';
+    ctx.fillRect(0, 0, wPx, 3);
+    ctx.fillStyle = 'rgba(80, 110, 150, 0.22)';
+    ctx.fillRect(0, 0, 1.5, hPx);
+    const cell = 6;
+    for (let y = 6; y < hPx - 4; y += cell) {
+      for (let x = 4; x < wPx - 4; x += cell) {
+        if (Math.random() > 0.1) continue;
+        ctx.globalAlpha = 0.4 + Math.random() * 0.4;
+        ctx.fillStyle = Math.random() < 0.55 ? WINDOW_WARM : WINDOW_COOL;
+        ctx.fillRect(x, y, 2.5, 3);
+      }
+    }
+    ctx.globalAlpha = 1;
+    if (Math.random() < 0.3) {
+      const c = NEON_ACCENTS[(Math.random() * NEON_ACCENTS.length) | 0];
+      ctx.shadowColor = c;
+      ctx.shadowBlur = 5;
+      ctx.fillStyle = c;
+      ctx.globalAlpha = 0.7;
+      ctx.fillRect(wPx - 5, 8, 2, Math.min(24, hPx * 0.3));
+      ctx.globalAlpha = 1;
+      ctx.shadowBlur = 0;
+    }
+  });
+}
+
 /**
  * Street surface, structured like the REPLACED reference: a concrete walkway
  * along the buildings (texture top = far side), a lit curb edge, then rough

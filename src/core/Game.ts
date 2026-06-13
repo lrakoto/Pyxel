@@ -28,6 +28,7 @@ export class Game {
   private readonly player: Player;
   private readonly playerLight: THREE.PointLight;
   private readonly rain: Rain;
+  private readonly rainFar: Rain;
   private readonly updatables: Updatable[];
   private readonly signLights: THREE.PointLight[];
   private readonly keys = new Set<string>();
@@ -62,6 +63,19 @@ export class Game {
 
     this.rain = new Rain();
     this.scene.add(this.rain.object);
+    // Slow sparse drizzle deep in the scene, in front of the painted skyline.
+    this.rainFar = new Rain({
+      count: 320,
+      top: 26,
+      spanX: 95,
+      zMin: -65,
+      zMax: -34,
+      velX: -1,
+      velY: -5.5,
+      tail: 0.09,
+      opacity: 0.15,
+    });
+    this.scene.add(this.rainFar.object);
 
     this.composer = new EffectComposer(this.renderer, {
       frameBufferType: THREE.HalfFloatType,
@@ -113,6 +127,7 @@ export class Game {
     this.playerLight.position.set(this.player.x + 0.4, 2.3, 2.2);
     this.player.updateRim(this.signLights);
     this.rain.update(dt, this.camX);
+    this.rainFar.update(dt, 0);
     for (const u of this.updatables) u.update(dt);
 
     this.camX += (this.player.x * 0.9 - this.camX) * Math.min(1, dt * 3);

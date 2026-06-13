@@ -191,6 +191,54 @@ class Puddle implements Updatable {
   }
 }
 
+export interface SparkleOptions {
+  color?: string;
+  size?: number;
+  /** Lay the flecks flat on the ground instead of facing the camera. */
+  flat?: boolean;
+  maxOpacity?: number;
+}
+
+/**
+ * Tiny additive flecks that twinkle at random phases — the per-pixel water
+ * sparkle from the reference street shot. Generic over placement: asphalt,
+ * curb edge, window sills, prop tops.
+ */
+export class Sparkles implements Updatable {
+  readonly group = new THREE.Group();
+  private readonly items: { mat: THREE.MeshBasicMaterial; phase: number; speed: number }[] = [];
+  private readonly maxOpacity: number;
+  private t = 0;
+
+  constructor(points: THREE.Vector3[], opts: SparkleOptions = {}) {
+    this.maxOpacity = opts.maxOpacity ?? 0.55;
+    const size = opts.size ?? 0.09;
+    const geo = new THREE.PlaneGeometry(size, size * 0.55);
+    for (const p of points) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: opts.color ?? '#cfe0f4',
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      if (opts.flat) mesh.rotation.x = -Math.PI / 2;
+      mesh.position.copy(p);
+      this.group.add(mesh);
+      this.items.push({ mat, phase: Math.random() * 10, speed: 0.6 + Math.random() * 1.8 });
+    }
+  }
+
+  update(dt: number) {
+    this.t += dt;
+    for (const it of this.items) {
+      const s = Math.sin(this.t * it.speed + it.phase);
+      it.mat.opacity = Math.max(0, s) ** 3 * this.maxOpacity;
+    }
+  }
+}
+
 function flatProp(tex: THREE.Texture, w: number, h: number): THREE.Mesh {
   const mesh = new THREE.Mesh(
     new THREE.PlaneGeometry(w, h),
@@ -210,6 +258,7 @@ export function buildStreetProps(scene: THREE.Scene): StreetProps {
   const updatables: Updatable[] = [];
   const lights: THREE.PointLight[] = [];
   const steamTex = steamPuffTexture();
+  const propTops: THREE.Vector3[] = [];
 
   for (const spec of STREET_PROPS) {
     switch (spec.type) {
@@ -230,6 +279,7 @@ export function buildStreetProps(scene: THREE.Scene): StreetProps {
         light.position.set(spec.x, 1.2, PROP_Z + 0.8);
         scene.add(light);
         lights.push(light);
+        propTops.push(new THREE.Vector3(spec.x - 0.2, 1.74, PROP_Z + 0.05));
         break;
       }
       case 'bin': {
@@ -237,6 +287,7 @@ export function buildStreetProps(scene: THREE.Scene): StreetProps {
         mesh.position.x = spec.x;
         mesh.position.z = PROP_Z;
         scene.add(mesh);
+        propTops.push(new THREE.Vector3(spec.x + 0.1, 0.66, PROP_Z + 0.05));
         break;
       }
       case 'crates': {
@@ -244,6 +295,7 @@ export function buildStreetProps(scene: THREE.Scene): StreetProps {
         mesh.position.x = spec.x;
         mesh.position.z = PROP_Z;
         scene.add(mesh);
+        propTops.push(new THREE.Vector3(spec.x + 0.15, 0.86, PROP_Z + 0.05));
         break;
       }
       case 'steam': {
@@ -271,6 +323,26 @@ export function buildStreetProps(scene: THREE.Scene): StreetProps {
         break;
       }
     }
+  }
+
+  // asphalt flecks
+  const asphalt: THREE.Vector3[] = [];
+  for (let i = 0; i < 30; i++) {
+    asphalt.push(new THREE.Vector3(-18 + Math.random() * 36, 0.02, -4 + Math.random() * 10));
+  }
+  // glints along the lit curb edge
+  const curb: THREE.Vector3[] = [];
+  for (let i = 0; i < 14; i++) {
+    curb.push(new THREE.Vector3(-20 + Math.random() * 40, 0.1, -5.32));
+  }
+  const sets = [
+    new Sparkles(asphalt, { flat: true }),
+    new Sparkles(curb, { size: 0.07, maxOpacity: 0.5, color: '#dfe9f8' }),
+    new Sparkles(propTops, { size: 0.07, maxOpacity: 0.5 }),
+  ];
+  for (const s of sets) {
+    scene.add(s.group);
+    updatables.push(s);
   }
 
   return { updatables, lights };
