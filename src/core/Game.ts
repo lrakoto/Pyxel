@@ -14,6 +14,7 @@ import { Player } from '../world/Player';
 import { PuddleSystem } from '../world/puddles';
 import { Rain } from '../world/Rain';
 import { RainSplash } from '../world/RainSplash';
+import { DialogueManager } from '../world/dialogue';
 import { buildSector7, type Sector7World, type Updatable } from '../world/sector7';
 
 // The frame is rendered at a fixed low resolution, then upscaled with
@@ -37,6 +38,7 @@ export class Game {
   private readonly updatables: Updatable[];
   private readonly signLights: THREE.PointLight[];
   private readonly world: Sector7World;
+  private readonly dialogue: DialogueManager;
   private readonly keys = new Set<string>();
   private readonly clock = new THREE.Clock();
   private camX = 0;
@@ -90,6 +92,8 @@ export class Game {
 
     this.splashes = new RainSplash();
     this.scene.add(this.splashes.group);
+
+    this.dialogue = new DialogueManager();
 
     // Mirror puddles: marked last so the reflection layer covers the whole
     // assembled scene (buildings, signs, props, Cole, lights).
@@ -170,21 +174,50 @@ export class Game {
   private tick() {
     const dt = Math.min(this.clock.getDelta(), 0.05);
 
-    this.player.update(dt, {
-      left: this.keys.has('ArrowLeft') || this.keys.has('KeyA'),
-      right: this.keys.has('ArrowRight') || this.keys.has('KeyD'),
-    });
-    this.playerLight.position.set(this.player.x + 0.4, 2.3, 2.2);
-    this.player.updateRim(this.signLights);
-    this.rain.update(dt, this.camX);
-    this.rainFar.update(dt, 0);
-    this.splashes.update(dt, this.camX);
-    for (const u of this.updatables) u.update(dt);
+    // Dialogue input takes priority — freezes movement while open
+    if (this.dialogue.isOpen) {
+      if (this.keys.has('KeyE') || this.keys.has('Space')) {
+        this.keys.delete('KeyE');
+        this.keys.delete('Space');
+        this.dialogue.advance();
+      }
+      // Close if player walks out of range
+      const nearby = this.dialogue.findNearby(this.player.x);
+      if (!nearby) this.dialogue.close();
+    } else {
+      this.player.update(dt, {
+        left: this.keys.has('ArrowLeft') || this.keys.has('KeyA'),
+        right: this.keys.has('ArrowRight') || this.keys.has('KeyD'),
+      });
+      this.playerLight.position.set(this.player.x + 0.4, 2.3, 2.2);
+      this.player.updateRim(this.signLights);
+      this.rain.update(dt, this.camX);
+      this.rainFar.update(dt, 0);
+      this.splashes.update(dt, this.camX);
+      for (const u of this.updatables) u.update(dt);
 
-    this.camX += (this.player.x * 0.9 - this.camX) * Math.min(1, dt * 3);
-    this.camera.position.x = this.camX;
-    this.camera.lookAt(this.camX, 2.0, 0);
-    this.world.viewPoint.copy(this.camera.position);
+      this.camX += (this.player.x * 0.9 - this.camX) * Math.min(1, dt * 3);
+      this.camera.position.x = this.camX;
+      this.camera.lookAt(this.camX, 2.0, 0);
+      this.world.viewPoint.copy(this.camera.position);
+
+      // Interaction proximity
+      const nearby = this.dialogue.findNearby(this.player.x);
+      const hintEl = document.getElementById('interact-hint')!;
+      if (nearby) {
+        hintEl.style.display = 'block';
+        if (this.keys.has('KeyE')) {
+          this.keys.delete('KeyE');
+          this.dialogue.openDialogue(nearby);
+          hintEl.style.display = 'none';
+        }
+      } else {
+        hintEl.style.display = 'none';
+      }
+    }
+
+    // Dialogue typewriter effect
+    this.dialogue.update(dt);
 
     this.puddles.update(this.camera, dt);
     this.puddles.render(this.renderer, this.scene);
