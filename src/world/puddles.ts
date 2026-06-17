@@ -99,7 +99,13 @@ void main() {
   // gentle ripple — small enough to keep reflected text readable
   uv.x += sin(uv.y * 40.0 + uTime * 1.4) * 0.0035;
   uv = clamp(uv, 0.001, 0.999);
-  vec3 refl = texture2D(tReflect, uv).rgb;
+  // chromatic shift near puddle edges: red/blue diverge as mask fades
+  float edge = 1.0 - smoothstep(0.3, 0.9, mask);
+  vec2 caOff = vec2(edge * 0.004, 0.0);
+  float r = texture2D(tReflect, uv + caOff).r;
+  float g = texture2D(tReflect, uv).g;
+  float b = texture2D(tReflect, uv - caOff).b;
+  vec3 refl = vec3(r, g, b);
   gl_FragColor = vec4(refl * uTint, mask * uOpacity);
 }
 `;

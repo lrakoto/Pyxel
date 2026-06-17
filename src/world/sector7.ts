@@ -32,8 +32,11 @@ interface SignSpec {
 const SIGNS: SignSpec[] = [
   { text: 'NO/BODY', color: '#b14dff', x: -15.5, y: 3.0, w: 3.6 },
   { text: 'SECTOR 7', color: '#36e0ff', x: -9.5, y: 4.3, w: 4.6 },
+  { text: 'HOTEL', color: '#ff6b6b', x: -4.5, y: 4.0, w: 2.6 },
   { text: 'MEMORY DEN', color: '#ff3da0', x: 2.5, y: 3.5, w: 5.2 },
+  { text: 'OPEN', color: '#4aff8a', x: 6.0, y: 2.8, w: 1.8 },
   { text: 'ヌードル', color: '#ffb03a', x: 10, y: 4.6, w: 3.4 },
+  { text: 'LIQUOR', color: '#7a5aff', x: 13.5, y: 3.8, w: 2.8 },
 ];
 
 /** A neon sign plane plus a matching point light, with occasional flicker. */
@@ -215,6 +218,96 @@ export function buildSector7(): Sector7World {
     })
     .catch((err) => console.warn('skyline plate unavailable, keeping procedural sky', err));
 
+  // Volumetric light beam under a neon sign: a tapered additive plane
+  class LightBeam implements Updatable {
+    readonly mesh: THREE.Mesh;
+    private readonly mat: THREE.MeshBasicMaterial;
+    private t = Math.random() * 10;
+
+    constructor(x: number, y: number, color: string) {
+      this.mat = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        fog: false,
+      });
+      this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 0.5), this.mat);
+      this.mesh.position.set(x, y - 0.6, -8.6);
+      this.mesh.scale.y = 0;
+      this.mesh.userData.noReflect = true;
+    }
+
+    update(dt: number) {
+      this.t += dt;
+      // Slowly pulse in and out
+      const phase = 0.5 + 0.5 * Math.sin(this.t * 0.6);
+      this.mat.opacity = phase * 0.12;
+      // Taper the beam: narrow at sign, flare at bottom
+      const taper = 0.5 + phase * 1.0;
+      this.mesh.scale.x = taper * 0.3;
+      this.mesh.scale.y = 1.2 + phase * 1.5;
+    }
+  }
+
+  // Pulsing window glow for a few lit facade windows
+  class AnimatedWindow implements Updatable {
+    readonly mesh: THREE.Mesh;
+    private readonly mat: THREE.MeshBasicMaterial;
+    private t = Math.random() * 10;
+
+    constructor(x: number, y: number, z: number) {
+      this.mat = new THREE.MeshBasicMaterial({
+        color: Math.random() < 0.5 ? '#d9a05a' : '#7fb8d9',
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.22), this.mat);
+      this.mesh.position.set(x, y, z + 0.02);
+    }
+
+    update(dt: number) {
+      this.t += dt;
+      // Slow pulse with occasional flicker
+      const flicker = Math.random() < dt * 3 ? 0.3 + Math.random() * 0.7 : 1;
+      this.mat.opacity = (0.15 + 0.25 * Math.abs(Math.sin(this.t * 0.7))) * flicker;
+    }
+  }
+
+  // Distant traffic dot: a small glowing pair that moves slowly
+  class TrafficDot implements Updatable {
+    readonly mesh: THREE.Mesh;
+    private readonly mat: THREE.MeshBasicMaterial;
+    private x: number;
+    private readonly baseZ: number;
+    private readonly speed: number;
+
+    constructor(x: number, z: number) {
+      this.mat = new THREE.MeshBasicMaterial({
+        color: '#ff8855',
+        transparent: true,
+        opacity: 0.5,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        fog: false,
+      });
+      this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.15), this.mat);
+      this.x = x;
+      this.baseZ = z;
+      this.speed = 0.6 + Math.random() * 0.8;
+      this.mesh.position.set(x, 0.15, z);
+    }
+
+    update(dt: number) {
+      this.x += this.speed * dt;
+      if (this.x > 30) this.x = -30;
+      this.mesh.position.x = this.x;
+      this.mesh.position.z = this.baseZ + Math.sin(this.x * 0.3) * 0.15;
+    }
+  }
+
   // Low roughness + a touch of metalness makes the neon point lights pool on
   // the asphalt like a wet street.
   const groundMat = new THREE.MeshStandardMaterial({
@@ -252,7 +345,37 @@ export function buildSector7(): Sector7World {
     scene.add(sign.group);
     updatables.push(sign);
     signLights.push(sign.light);
+
+    // Volumetric light beam below each sign
+    const beam = new LightBeam(spec.x, spec.y, spec.color);
+    scene.add(beam.mesh);
+    updatables.push(beam);
   }
+
+  // Animated windows: a few pulsing facade windows per building row
+  const windowAnims: AnimatedWindow[] = [];
+  for (let bx = -45; bx < 50; bx += 9) {
+    const count = 1 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < count; i++) {
+      const aw = new AnimatedWindow(
+        bx - 2 + Math.random() * 4,
+        1.5 + Math.random() * 5,
+        -8.6 - (Math.abs(bx) % 3) * 0.5,
+      );
+      scene.add(aw.mesh);
+      windowAnims.push(aw);
+    }
+  }
+  updatables.push(...windowAnims);
+
+  // Distant traffic dots on the far road
+  const traffic: TrafficDot[] = [];
+  for (let i = 0; i < 3; i++) {
+    const td = new TrafficDot(-20 + Math.random() * 40, -10 - i * 2);
+    scene.add(td.mesh);
+    traffic.push(td);
+  }
+  updatables.push(...traffic);
 
   updatables.push(...buildForeground(scene));
   buildNearground(scene);
@@ -303,7 +426,7 @@ export function buildSector7(): Sector7World {
     updatables.push(s);
   }
 
-  scene.add(new THREE.AmbientLight('#2a3a5e', 0.8));
+  scene.add(new THREE.AmbientLight('#1e2a44', 0.45));
   const moon = new THREE.DirectionalLight('#42598a', 0.5);
   moon.position.set(4, 10, 6);
   scene.add(moon);

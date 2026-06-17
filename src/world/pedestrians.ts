@@ -3,6 +3,16 @@ import { TUNING } from '../tuning';
 import { canvasTexture, spriteTexture } from './pixelTextures';
 import type { Updatable } from './sector7';
 
+/** Small half-circle umbrella texture for a subset of pedestrians. */
+function umbrellaTexture(): THREE.CanvasTexture {
+  return canvasTexture(20, 10, (ctx) => {
+    ctx.fillStyle = Math.random() < 0.5 ? '#1c222e' : '#2a1f22';
+    ctx.beginPath();
+    ctx.ellipse(10, 10, 10, 5, 0, Math.PI, 0);
+    ctx.fill();
+  });
+}
+
 /**
  * Background foot traffic for the sidewalk in front of the buildings. Each
  * pedestrian is a small lit silhouette that strolls along x and wraps around
@@ -109,7 +119,10 @@ class Pedestrian implements Updatable {
   private bobPhase = Math.random() * Math.PI * 2;
   private readonly baseY: number;
 
-  constructor(shadowTex: THREE.CanvasTexture) {
+  private readonly hasUmbrella: boolean;
+
+  constructor(shadowTex: THREE.CanvasTexture, umbrellaTex: THREE.CanvasTexture) {
+    this.hasUmbrella = Math.random() < 0.3;
     const { body, palette } = pickPalette();
     this.frames = [LEGS_A, LEGS_B].map((legs) => spriteTexture([...body, ...legs], palette));
     this.material = new THREE.MeshStandardMaterial({
@@ -134,6 +147,16 @@ class Pedestrian implements Updatable {
     shadow.rotation.x = -Math.PI / 2;
     shadow.position.y = 0.02;
     this.group.add(this.mesh, shadow);
+
+    if (this.hasUmbrella) {
+      const ulla = new THREE.Mesh(new THREE.PlaneGeometry(0.45, 0.25), new THREE.MeshBasicMaterial({
+        map: umbrellaTex,
+        transparent: true,
+        depthWrite: false,
+      }));
+      ulla.position.set(0, height * 0.75, 0);
+      this.group.add(ulla);
+    }
 
     this.dir = Math.random() < 0.5 ? 1 : -1;
     this.speed = TUNING.pedSpeedMin + Math.random() * Math.max(0, TUNING.pedSpeedMax - TUNING.pedSpeedMin);
@@ -178,6 +201,8 @@ export class PedestrianField implements Updatable {
   private readonly peds: Pedestrian[] = [];
   private readonly shadowTex = shadowTexture();
 
+  private readonly umbrellaTex = umbrellaTexture();
+
   constructor(private readonly scene: THREE.Scene, count: number) {
     this.setCount(count);
   }
@@ -185,7 +210,7 @@ export class PedestrianField implements Updatable {
   setCount(n: number) {
     const target = Math.max(0, Math.round(n));
     while (this.peds.length < target) {
-      const ped = new Pedestrian(this.shadowTex);
+      const ped = new Pedestrian(this.shadowTex, this.umbrellaTex);
       this.scene.add(ped.group);
       this.peds.push(ped);
     }

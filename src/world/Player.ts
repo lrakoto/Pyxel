@@ -79,6 +79,15 @@ const LEGS_PASS = [
   '..BBB.BBB.....',
 ];
 
+const LEGS_MID = [
+  '...PP.P.......',
+  '...PP.PP......',
+  '..PP...P......',
+  '.PP....P......',
+  '.BB....BB.....',
+  'BB......BB....',
+];
+
 const SPRITE_W = 14;
 const SPRITE_H = 28;
 
@@ -390,7 +399,7 @@ export class Player {
       }
     }
 
-    this.frames = [LEGS_IDLE, LEGS_STRIDE, LEGS_PASS].map((legs) =>
+    this.frames = [LEGS_IDLE, LEGS_STRIDE, LEGS_MID, LEGS_PASS].map((legs) =>
       spriteTexture([...BODY, ...legs], PALETTE),
     );
     this.material = new THREE.MeshStandardMaterial({
@@ -449,7 +458,9 @@ export class Player {
       this.animTimer += dt;
       if (this.animTimer > FRAME_TIME) {
         this.animTimer = 0;
-        this.frame = this.frame === 1 ? 2 : 1;
+        if (this.frame === 1) this.frame = 2;
+        else if (this.frame === 2) this.frame = 3;
+        else this.frame = 1;
         this.material.map = this.frames[this.frame];
       }
     } else if (this.frame !== 0) {

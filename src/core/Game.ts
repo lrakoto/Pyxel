@@ -7,11 +7,13 @@ import {
   EffectPass,
   NoiseEffect,
   RenderPass,
+  TextureEffect,
   VignetteEffect,
 } from 'postprocessing';
 import { Player } from '../world/Player';
 import { PuddleSystem } from '../world/puddles';
 import { Rain } from '../world/Rain';
+import { RainSplash } from '../world/RainSplash';
 import { buildSector7, type Sector7World, type Updatable } from '../world/sector7';
 
 // The frame is rendered at a fixed low resolution, then upscaled with
@@ -30,6 +32,7 @@ export class Game {
   private readonly playerLight: THREE.PointLight;
   private readonly rain: Rain;
   private readonly rainFar: Rain;
+  private readonly splashes: RainSplash;
   private readonly puddles: PuddleSystem;
   private readonly updatables: Updatable[];
   private readonly signLights: THREE.PointLight[];
@@ -85,6 +88,9 @@ export class Game {
     this.rain.object.userData.noReflect = true;
     this.rainFar.object.userData.noReflect = true;
 
+    this.splashes = new RainSplash();
+    this.scene.add(this.splashes.group);
+
     // Mirror puddles: marked last so the reflection layer covers the whole
     // assembled scene (buildings, signs, props, Cole, lights).
     this.puddles = new PuddleSystem();
@@ -97,7 +103,7 @@ export class Game {
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     const bloom = new BloomEffect({
       intensity: 1.15,
-      luminanceThreshold: 0.22,
+      luminanceThreshold: 0.15,
       luminanceSmoothing: 0.3,
       mipmapBlur: true,
     });
@@ -112,7 +118,37 @@ export class Game {
     });
     grain.blendMode.opacity.value = 0.5;
     const vignette = new VignetteEffect({ offset: 0.28, darkness: 0.62 });
-    this.composer.addPass(new EffectPass(this.camera, bloom, chroma, grain, vignette));
+
+    // Procedural lens dirt: dust specks and faint scratches on a dark canvas
+    const dirtCanvas = document.createElement('canvas');
+    dirtCanvas.width = 256;
+    dirtCanvas.height = 256;
+    const dirtCtx = dirtCanvas.getContext('2d')!;
+    dirtCtx.fillStyle = '#ffffff';
+    dirtCtx.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 60; i++) {
+      const s = 1 + Math.random() * 8;
+      dirtCtx.fillStyle = `rgba(0,0,0,${0.02 + Math.random() * 0.12})`;
+      dirtCtx.beginPath();
+      dirtCtx.arc(Math.random() * 256, Math.random() * 256, s, 0, Math.PI * 2);
+      dirtCtx.fill();
+    }
+    for (let i = 0; i < 15; i++) {
+      dirtCtx.strokeStyle = `rgba(0,0,0,${0.03 + Math.random() * 0.08})`;
+      dirtCtx.lineWidth = 0.5 + Math.random() * 1.5;
+      dirtCtx.beginPath();
+      dirtCtx.moveTo(Math.random() * 256, Math.random() * 256);
+      dirtCtx.lineTo(Math.random() * 256, Math.random() * 256);
+      dirtCtx.stroke();
+    }
+    const dirtTex = new THREE.CanvasTexture(dirtCanvas);
+    const lensDirt = new TextureEffect({
+      texture: dirtTex,
+      blendFunction: BlendFunction.MULTIPLY,
+    });
+    lensDirt.blendMode.opacity.value = 0.15;
+
+    this.composer.addPass(new EffectPass(this.camera, bloom, chroma, grain, vignette, lensDirt));
     this.composer.setSize(VIEW_W, VIEW_H);
 
     window.addEventListener('keydown', (e) => this.keys.add(e.code));
@@ -142,6 +178,7 @@ export class Game {
     this.player.updateRim(this.signLights);
     this.rain.update(dt, this.camX);
     this.rainFar.update(dt, 0);
+    this.splashes.update(dt, this.camX);
     for (const u of this.updatables) u.update(dt);
 
     this.camX += (this.player.x * 0.9 - this.camX) * Math.min(1, dt * 3);
