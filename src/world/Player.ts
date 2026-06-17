@@ -99,7 +99,10 @@ uniform float uRimDirX;
 uniform float uRimUp;
 uniform vec2 uRimTexel;
 uniform float uSpeed;
-uniform float uLensPos;
+uniform vec3 uGlintColor0;
+uniform float uGlintPos0;
+uniform vec3 uGlintColor1;
+uniform float uGlintPos1;
 `;
 
 const RIM_GLSL = `
@@ -112,18 +115,25 @@ const RIM_GLSL = `
                 + uRimUp * rimU;
   gl_FragColor.rgb += uRimColor * clamp(rimEdge, 0.0, 1.5);
 
-  // Reflection sweeps across sunglasses opposite to movement
+  // Per-light reflections on sunglasses
   float lensLeft = 0.48;
   float lensRight = 0.74;
   float lensWidth = lensRight - lensLeft;
-  float rawPos = uLensPos;
-  float pos = lensLeft + rawPos * lensWidth;
-  float edgeFade = smoothstep(0.0, 0.025, rawPos) * smoothstep(1.0, 0.975, rawPos);
-  float dx = vMapUv.x - pos;
-  float dy = vMapUv.y - 0.80;
-  float highlight = 1.0 - smoothstep(0.008, 0.035, sqrt(dx * dx + dy * dy));
-  float sheen = highlight * smoothstep(0.1, 0.5, uSpeed) * 3.5 * edgeFade;
-  gl_FragColor.rgb += vec3(sheen * 0.75, sheen * 0.88, sheen);
+  float movementFade = smoothstep(0.1, 0.5, uSpeed);
+  vec3 glintAccum = vec3(0.0);
+
+  float pos0 = lensLeft + uGlintPos0 * lensWidth;
+  float d0 = sqrt((vMapUv.x - pos0) * (vMapUv.x - pos0) + (vMapUv.y - 0.80) * (vMapUv.y - 0.80));
+  float g0 = 1.0 - smoothstep(0.008, 0.035, d0);
+  glintAccum += uGlintColor0 * g0;
+
+  float pos1 = lensLeft + uGlintPos1 * lensWidth;
+  float d1 = sqrt((vMapUv.x - pos1) * (vMapUv.x - pos1) + (vMapUv.y - 0.80) * (vMapUv.y - 0.80));
+  float g1 = 1.0 - smoothstep(0.008, 0.035, d1);
+  glintAccum += uGlintColor1 * g1;
+
+  float sheen = movementFade * 2.5;
+  gl_FragColor.rgb += glintAccum * sheen + vec3(sheen * 0.1);
 #endif
 `;
 
@@ -335,9 +345,11 @@ export class Player {
     uRimUp: { value: 0.3 },
     uRimTexel: { value: new THREE.Vector2(1 / SPRITE_W, 1 / SPRITE_H) },
     uSpeed: { value: 0 },
-    uLensPos: { value: 0 },
+    uGlintColor0: { value: new THREE.Color(0, 0, 0) },
+    uGlintPos0: { value: 0.5 },
+    uGlintColor1: { value: new THREE.Color(0, 0, 0) },
+    uGlintPos1: { value: 0.5 },
   };
-  private lensPos = 0.5;
 
   constructor() {
     if (import.meta.env.DEV) {
@@ -433,11 +445,6 @@ export class Player {
     const coleVx = dt > 0 ? (this.x - this.prevX) / dt : 0;
     this.prevX = this.x;
     this.rimUniforms.uSpeed.value = Math.abs(coleVx) / SPEED;
-    if (Math.abs(coleVx) > 0.1) {
-      this.lensPos -= Math.sign(coleVx) * this.facing * dt * 0.7;
-    }
-    this.lensPos = ((this.lensPos % 1) + 1) % 1;
-    this.rimUniforms.uLensPos.value = this.lensPos;
     this.scarf.update(dt, this.x, NECK_Y + bob, coleVx, this.rimUniforms.uRimColor.value, this.rimUniforms.uRimDirX.value);
   }
 
@@ -451,6 +458,7 @@ export class Player {
     let b = 0;
     let dirX = 0;
     let total = 0;
+    const candidates: { color: THREE.Color; rawDir: number; weight: number }[] = [];
     for (const light of lights) {
       const dx = light.position.x - this.x;
       const dy = light.position.y - 1.2;
@@ -460,18 +468,40 @@ export class Player {
       r += light.color.r * w;
       g += light.color.g * w;
       b += light.color.b * w;
-      dirX += (dx / Math.sqrt(d2)) * w;
+      const rawDir = dx / Math.sqrt(d2);
+      dirX += rawDir * w;
       total += w;
+      candidates.push({ color: light.color, rawDir, weight: w });
     }
     if (total <= 0.001) {
       this.rimUniforms.uRimColor.value.setScalar(0);
+      this.rimUniforms.uGlintColor0.value.setScalar(0);
+      this.rimUniforms.uGlintColor1.value.setScalar(0);
       return;
     }
     const peak = Math.max(r, g, b);
     const strength = Math.min(total * 1.6, 2.4);
     this.rimUniforms.uRimColor.value.setRGB(r / peak, g / peak, b / peak).multiplyScalar(strength);
-    // Texture UVs mirror when the sprite flips, so the world-space light
-    // direction has to flip with the facing.
     this.rimUniforms.uRimDirX.value = THREE.MathUtils.clamp(dirX / total, -1, 1) * this.facing;
+
+    // Per-light reflections on glasses
+    candidates.sort((a, b) => b.weight - a.weight);
+    const setGlint = (i: number, color: THREE.Color, pos: number) => {
+      const key = i === 0 ? 'uGlintColor0' : 'uGlintColor1';
+      const posKey = i === 0 ? 'uGlintPos0' : 'uGlintPos1';
+      this.rimUniforms[key].value.copy(color);
+      this.rimUniforms[posKey].value = pos;
+    };
+    for (let i = 0; i < 2; i++) {
+      if (i < candidates.length) {
+        const c = candidates[i];
+        const intensity = Math.min(c.weight * 6, 1.5);
+        const col = c.color.clone().multiplyScalar(intensity);
+        const pos = THREE.MathUtils.clamp(0.5 + c.rawDir * this.facing * 0.35, 0.05, 0.95);
+        setGlint(i, col, pos);
+      } else {
+        setGlint(i, new THREE.Color(0, 0, 0), 0.5);
+      }
+    }
   }
 }
