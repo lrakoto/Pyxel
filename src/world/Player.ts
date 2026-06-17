@@ -119,7 +119,6 @@ const RIM_GLSL = `
   float lensLeft = 0.48;
   float lensRight = 0.74;
   float lensWidth = lensRight - lensLeft;
-  float movementFade = smoothstep(0.1, 0.5, uSpeed);
   vec3 glintAccum = vec3(0.0);
 
   float pos0 = lensLeft + uGlintPos0 * lensWidth;
@@ -132,8 +131,8 @@ const RIM_GLSL = `
   float g1 = 1.0 - smoothstep(0.008, 0.035, d1);
   glintAccum += uGlintColor1 * g1;
 
-  float sheen = movementFade * 2.5;
-  gl_FragColor.rgb += glintAccum * sheen + vec3(sheen * 0.1);
+  float glintPresent = clamp(length(glintAccum) * 8.0, 0.0, 1.0);
+  gl_FragColor.rgb += glintAccum * 2.5 + vec3(glintPresent * 0.3);
 #endif
 `;
 
