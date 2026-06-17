@@ -11,50 +11,51 @@ import type { Updatable } from './sector7';
  * pass each sign — mostly reading as dark figures against the lit ground.
  */
 
-// 10×16 walker, split into a static torso and two leg frames so the same
-// silhouette can stride. '.' is transparent; letters map through a palette.
+// 10×16 *side-profile* walker, facing right (mirrored for left). Split into a
+// static torso and two leg frames so the silhouette strides fore-and-aft like
+// a person seen from the side. '.' is transparent; letters map through a palette.
 const COAT_BODY = [
-  '...HHHH...',
-  '..HHHHHH..',
-  '..HSSSSH..',
-  '..HHHHHH..',
+  '...HHH....',
+  '..HHHH....',
+  '..HHHf....',
+  '..CCCC....',
+  '..CCCCC...',
   '..CCCCCC..',
-  '.CCCCCCCC.',
-  '.CCCCCCCC.',
-  '.CCCCCCCC.',
-  '.CCCCCCCC.',
-  '.CCCCCCCC.',
-  '..CCCCCC..',
-  '..CCCCCC..',
+  '..CCCCC...',
+  '..CCCCC...',
+  '..CCCCC...',
+  '..CCCCC...',
+  '..CCCC....',
+  '..CCCC....',
 ];
 
 const HOOD_BODY = [
-  '...kkkk...',
+  '...kkk....',
+  '..kkkk....',
+  '..kkkf....',
+  '..kkkk....',
+  '..kkkkk...',
+  '.kkkkkk...',
   '..kkkkkk..',
-  '..kkffkk..',
-  '..kkkkkk..',
-  '..kkkkkk..',
-  '.kkkkkkkk.',
-  '.kkkkkkkk.',
-  '.kkkkkkkk.',
-  '.kkkkkkkk.',
-  '.kkkkkkkk.',
-  '..kkkkkk..',
-  '..kkkkkk..',
+  '..kkkkk...',
+  '..kkkkk...',
+  '..kkkk....',
+  '..kkkk....',
+  '..kkkk....',
 ];
 
 const LEGS_A = [
-  '..PP..PP..',
-  '..PP..PP..',
-  '..PP..PP..',
-  '..BB..BB..',
+  '..P..P....',
+  '.P...P....',
+  '.P....P...',
+  'BB....BB..',
 ];
 
 const LEGS_B = [
-  '..PP..PP..',
-  '.PP....PP.',
-  '.PP....PP.',
-  '.BB....BB.',
+  '..PP......',
+  '..P.P.....',
+  '..P.P.....',
+  '.BB.BB....',
 ];
 
 const COAT_TONES = ['#2a2f3a', '#33303a', '#2b3530', '#3a2e2e', '#26303c', '#34343a', '#2d2a32'];
