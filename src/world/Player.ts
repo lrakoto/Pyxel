@@ -22,6 +22,7 @@ const PALETTE: Record<string, string> = {
   b: '#1a1f28', // hat band
   P: '#20242c', // trousers
   B: '#0d0f13', // boots
+  f: '#7a5a44', // face shadow (under hat brim)
 };
 
 // Head + coat in profile, facing right. Shared across all frames (rows 0–21).
@@ -30,7 +31,7 @@ const BODY = [
   '...HHHHHHH....', // fedora crown
   '..bHHHHHHHb..', // fedora crown with hat band
   '..hhhhhhhhhhh.', // fedora brim
-  '....SSSSSS....',
+  '....fSSSSS....',
   '....SSSggg....', // sunglasses
   '....SSSSSS....',
   '.....SSSSS....',
@@ -101,8 +102,10 @@ uniform vec2 uRimTexel;
 uniform float uSpeed;
 uniform vec3 uGlintColor0;
 uniform float uGlintPos0;
+uniform float uGlintSize0;
 uniform vec3 uGlintColor1;
 uniform float uGlintPos1;
+uniform float uGlintSize1;
 `;
 
 const RIM_GLSL = `
@@ -123,13 +126,20 @@ const RIM_GLSL = `
 
   float pos0 = lensLeft + uGlintPos0 * lensWidth;
   float d0 = sqrt((vMapUv.x - pos0) * (vMapUv.x - pos0) + (vMapUv.y - 0.80) * (vMapUv.y - 0.80));
-  float g0 = 1.0 - smoothstep(0.008, 0.035, d0);
+  float g0 = 1.0 - smoothstep(0.008, uGlintSize0, d0);
   glintAccum += uGlintColor0 * g0;
 
   float pos1 = lensLeft + uGlintPos1 * lensWidth;
   float d1 = sqrt((vMapUv.x - pos1) * (vMapUv.x - pos1) + (vMapUv.y - 0.80) * (vMapUv.y - 0.80));
-  float g1 = 1.0 - smoothstep(0.008, 0.035, d1);
+  float g1 = 1.0 - smoothstep(0.008, uGlintSize1, d1);
   glintAccum += uGlintColor1 * g1;
+
+  // Soft edge fade so reflections wrap around the curved lens surface
+  float lensFade = smoothstep(0.46, 0.50, vMapUv.x)
+                * (1.0 - smoothstep(0.72, 0.76, vMapUv.x))
+                * smoothstep(0.75, 0.78, vMapUv.y)
+                * (1.0 - smoothstep(0.82, 0.84, vMapUv.y));
+  glintAccum *= lensFade;
 
   float glintPresent = clamp(length(glintAccum) * 8.0, 0.0, 1.0);
   gl_FragColor.rgb += glintAccum * 2.5 + vec3(glintPresent * 0.3);
@@ -171,6 +181,8 @@ class Scarf {
   private readonly env = { value: new THREE.Color(0, 0, 0) };
   private readonly glow = { value: TUNING.scarfGlow };
   private readonly dirX = { value: 0 };
+  private readonly glintPos = { value: 0.5 };
+  private readonly glintIntensity = { value: 0 };
   private t = 0;
   // Verlet point positions and their previous positions, in world space.
   private x: number[] = [];
@@ -191,6 +203,8 @@ class Scarf {
       shader.uniforms.uScarfEnv = this.env;
       shader.uniforms.uScarfGlow = this.glow;
       shader.uniforms.uScarfDirX = this.dirX;
+      shader.uniforms.uScarfGlintPos = this.glintPos;
+      shader.uniforms.uScarfGlintIntensity = this.glintIntensity;
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nvarying float vScarfT;\nvarying float vScarfU;')
         .replace(
@@ -200,17 +214,22 @@ class Scarf {
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <common>',
-          '#include <common>\nvarying float vScarfT;\nvarying float vScarfU;\nuniform vec3 uScarfEnv;\nuniform float uScarfGlow;\nuniform float uScarfDirX;',
+          '#include <common>\nvarying float vScarfT;\nvarying float vScarfU;\nuniform vec3 uScarfEnv;\nuniform float uScarfGlow;\nuniform float uScarfDirX;\nuniform float uScarfGlintPos;\nuniform float uScarfGlintIntensity;',
         )
         .replace(
           '#include <tonemapping_fragment>',
-          `// Directional edge glow: only the side facing the light source
-           float bx = uScarfDirX > 0.0
-             ? smoothstep(0.40, 0.5, vScarfU - 0.5)
-             : smoothstep(0.40, 0.5, 0.5 - vScarfU);
-           float border = bx;
-           gl_FragColor.rgb += uScarfEnv * border * uScarfGlow;
-           #include <tonemapping_fragment>`,
+           `// Directional edge glow: only the side facing the light source
+            float bx = uScarfDirX > 0.0
+              ? smoothstep(0.40, 0.5, vScarfU - 0.5)
+              : smoothstep(0.40, 0.5, 0.5 - vScarfU);
+            float border = bx;
+            gl_FragColor.rgb += uScarfEnv * border * uScarfGlow;
+
+            // Scarf glint catch — moves with the cloth sim
+            float gy = 1.0 - smoothstep(0.01, 0.06, abs(vScarfT - uScarfGlintPos));
+            float gx = 1.0 - smoothstep(0.0, 0.15, abs(vScarfU - 0.5));
+            gl_FragColor.rgb += uScarfEnv * gx * gy * uScarfGlintIntensity;
+            #include <tonemapping_fragment>`,
         );
     };
 
@@ -320,6 +339,10 @@ class Scarf {
       }
     }
     pos.needsUpdate = true;
+
+    // Glint drifts along the scarf driven by the cloth sim turbulence
+    this.glintPos.value = 0.3 + 0.5 * (0.5 + 0.5 * Math.sin(this.t * 1.5));
+    this.glintIntensity.value = TUNING.scarfGlow * (0.2 + 0.15 * Math.abs(Math.sin(this.t * 2.1)));
   }
 }
 
@@ -346,8 +369,10 @@ export class Player {
     uSpeed: { value: 0 },
     uGlintColor0: { value: new THREE.Color(0, 0, 0) },
     uGlintPos0: { value: 0.5 },
+    uGlintSize0: { value: 0.035 },
     uGlintColor1: { value: new THREE.Color(0, 0, 0) },
     uGlintPos1: { value: 0.5 },
+    uGlintSize1: { value: 0.035 },
   };
 
   constructor() {
@@ -435,7 +460,8 @@ export class Player {
 
     this.mesh.position.x = this.x;
     this.mesh.scale.x = this.facing;
-    const bob = walking ? Math.abs(Math.sin(performance.now() * 0.012)) * 0.035 : 0;
+    const breathe = Math.sin(performance.now() * 0.003) * 0.008;
+    const bob = walking ? Math.abs(Math.sin(performance.now() * 0.012)) * 0.035 : breathe;
     this.mesh.position.y = HEIGHT / 2 + bob;
     this.shadowObject.position.x = this.x;
 
@@ -497,7 +523,9 @@ export class Player {
         const intensity = Math.min(c.weight * 6, 1.5);
         const col = c.color.clone().multiplyScalar(intensity);
         const pos = THREE.MathUtils.clamp(0.5 + c.rawDir * this.facing * 0.35, 0.05, 0.95);
+        const size = 0.025 + Math.min(c.weight * 15, 1) * 0.035;
         setGlint(i, col, pos);
+        this.rimUniforms[i === 0 ? 'uGlintSize0' : 'uGlintSize1'].value = size;
       } else {
         setGlint(i, new THREE.Color(0, 0, 0), 0.5);
       }
