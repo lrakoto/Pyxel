@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { TUNING } from '../tuning';
 
 /**
  * All placeholder art is generated procedurally so the project runs with zero
@@ -380,6 +381,81 @@ export function streetTexture(): THREE.CanvasTexture {
       ctx.fillRect(Math.random() * w, 65 + Math.random() * (h - 70), 14 + Math.random() * 30, 5 + Math.random() * 9);
     }
   });
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.repeat.set(6, 1);
+  return tex;
+}
+
+/**
+ * Height field for the street, sharing streetTexture's layout and UV repeat so
+ * the relief lines up with the painted asphalt. Mid-gray is the flat baseline;
+ * lighter = raised (curb, grit), darker = recessed (walkway seams, tar patches).
+ * Sampled as linear data, not color — neon point lights graze the surface.
+ */
+export function streetBumpTexture(): THREE.CanvasTexture {
+  // 2× the color map's resolution so the asphalt grain stays fine rather than
+  // reading as coarse blocks when stretched along the road. Structural features
+  // sit at the same fractional positions, so the relief still lines up.
+  const w = 512;
+  const h = 256;
+  const curbY = 112; // 56 / 128 of the height — matches streetTexture's curb
+  const tex = canvasTexture(w, h, (ctx) => {
+    // Flat baseline.
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(0, 0, w, h);
+    // walkway: slightly proud paving with recessed seams, jittered so the
+    // sidewalk slabs don't read as a perfect grid
+    ctx.fillStyle = '#8c8c8c';
+    ctx.fillRect(0, 0, w, curbY);
+    ctx.fillStyle = '#5c5c5c';
+    for (let x = 0; x < w; x += 64) ctx.fillRect(x + (Math.random() * 6 - 3), 0, 1.5, curbY);
+    ctx.fillRect(0, 52, w, 1);
+    // curb: raised lit lip, then a deep recess where the drop shadow sits
+    ctx.fillStyle = '#e6e6e6';
+    ctx.fillRect(0, curbY, w, 6);
+    ctx.fillStyle = '#303030';
+    ctx.fillRect(0, curbY + 6, w, 4);
+    const roadTop = curbY + 10;
+    // Asphalt: layered grain — a broad mottle for uneven patches, then dense
+    // fine speckle for the gritty aggregate. Both stay sub-pixel-fine at this res.
+    for (let i = 0; i < 220; i++) {
+      const g = 96 + Math.random() * 48;
+      ctx.fillStyle = `rgba(${g},${g},${g},0.35)`;
+      ctx.beginPath();
+      ctx.arc(Math.random() * w, roadTop + Math.random() * (h - roadTop), 3 + Math.random() * 7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    const grit = ['#5a5a5a', '#6e6e6e', '#909090', '#a8a8a8', '#b4b4b4', '#525252'];
+    for (let i = 0; i < TUNING.gritCount; i++) {
+      ctx.fillStyle = grit[(Math.random() * grit.length) | 0];
+      ctx.fillRect(Math.random() * w, roadTop + Math.random() * (h - roadTop), 1, 1);
+    }
+    // Cracks: a few dark fissures that wander across the road, recessed below
+    // the surface. Each is a jittered random walk that occasionally forks.
+    ctx.strokeStyle = '#262626';
+    ctx.lineWidth = 1;
+    const walk = (x: number, y: number, angle: number, steps: number) => {
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      for (let s = 0; s < steps; s++) {
+        angle += (Math.random() - 0.5) * 0.9;
+        x += Math.cos(angle) * (3 + Math.random() * 4);
+        y += Math.sin(angle) * (3 + Math.random() * 4);
+        ctx.lineTo(x, y);
+        if (Math.random() < 0.08 && steps > 4) walk(x, y, angle + (Math.random() - 0.5), 3 + (Math.random() * 4) | 0);
+      }
+      ctx.stroke();
+    };
+    for (let i = 0; i < TUNING.crackCount; i++) {
+      walk(Math.random() * w, roadTop + Math.random() * (h - roadTop), Math.random() * Math.PI * 2, 8 + (Math.random() * 14) | 0);
+    }
+    // Tar patches sit lower than the surrounding road.
+    for (let i = 0; i < 6; i++) {
+      ctx.fillStyle = 'rgba(40,40,40,0.5)';
+      ctx.fillRect(Math.random() * w, roadTop + 8 + Math.random() * (h - roadTop - 16), 28 + Math.random() * 60, 10 + Math.random() * 18);
+    }
+  });
+  tex.colorSpace = THREE.NoColorSpace;
   tex.wrapS = THREE.RepeatWrapping;
   tex.repeat.set(6, 1);
   return tex;

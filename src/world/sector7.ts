@@ -6,12 +6,16 @@ import {
   neonSignTexture,
   sideWallTexture,
   skyTexture,
+  streetBumpTexture,
   streetTexture,
 } from './pixelTextures';
 import { loadPlateTexture } from './plateTexture';
 import { buildForeground } from './foreground';
 import { buildNearground } from './nearground';
+import { buildPedestrians } from './pedestrians';
 import { buildStreetProps, Sparkles } from './props';
+import { TUNING } from '../tuning';
+import { createTuningPanel } from '../debug/tuningPanel';
 
 export interface Updatable {
   update(dt: number): void;
@@ -213,10 +217,14 @@ export function buildSector7(): Sector7World {
 
   // Low roughness + a touch of metalness makes the neon point lights pool on
   // the asphalt like a wet street.
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(130, 28),
-    new THREE.MeshStandardMaterial({ map: streetTexture(), roughness: 0.3, metalness: 0.2 }),
-  );
+  const groundMat = new THREE.MeshStandardMaterial({
+    map: streetTexture(),
+    bumpMap: streetBumpTexture(),
+    bumpScale: TUNING.bumpScale,
+    roughness: TUNING.groundRoughness,
+    metalness: TUNING.groundMetalness,
+  });
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(130, 28), groundMat);
   ground.rotation.x = -Math.PI / 2;
   ground.position.set(0, 0, -4);
   // The ground would block the mirrored view from below.
@@ -251,6 +259,10 @@ export function buildSector7(): Sector7World {
 
   const street = buildStreetProps(scene);
   updatables.push(...street.updatables);
+
+  // Background foot traffic strolling the sidewalk in front of the facades.
+  const pedestrians = buildPedestrians(scene);
+  updatables.push(pedestrians);
   // Vending screens tint Cole's wet rim just like the signs do.
   signLights.push(...street.lights);
 
@@ -295,6 +307,22 @@ export function buildSector7(): Sector7World {
   const moon = new THREE.DirectionalLight('#42598a', 0.5);
   moon.position.set(4, 10, 6);
   scene.add(moon);
+
+  if (import.meta.env.DEV) {
+    const rebuildBump = () => {
+      groundMat.bumpMap?.dispose();
+      groundMat.bumpMap = streetBumpTexture();
+      groundMat.needsUpdate = true;
+    };
+    createTuningPanel({
+      bumpScale: (v) => (groundMat.bumpScale = v),
+      groundRoughness: (v) => (groundMat.roughness = v),
+      groundMetalness: (v) => (groundMat.metalness = v),
+      gritCount: rebuildBump,
+      crackCount: rebuildBump,
+      pedestrianCount: (v) => pedestrians.setCount(v),
+    });
+  }
 
   return { scene, updatables, signLights, viewPoint };
 }
