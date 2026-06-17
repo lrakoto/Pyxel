@@ -14,6 +14,7 @@ import { Player } from '../world/Player';
 import { PuddleSystem } from '../world/puddles';
 import { Rain } from '../world/Rain';
 import { RainSplash } from '../world/RainSplash';
+import { AudioManager } from './AudioManager';
 import { DialogueManager } from '../world/dialogue';
 import { buildSector7, type Sector7World, type Updatable } from '../world/sector7';
 
@@ -39,6 +40,8 @@ export class Game {
   private readonly signLights: THREE.PointLight[];
   private readonly world: Sector7World;
   private readonly dialogue: DialogueManager;
+  private readonly audio: AudioManager;
+  private audioReady = false;
   private readonly keys = new Set<string>();
   private readonly clock = new THREE.Clock();
   private camX = 0;
@@ -94,6 +97,7 @@ export class Game {
     this.scene.add(this.splashes.group);
 
     this.dialogue = new DialogueManager();
+    this.audio = new AudioManager();
 
     // Mirror puddles: marked last so the reflection layer covers the whole
     // assembled scene (buildings, signs, props, Cole, lights).
@@ -155,7 +159,13 @@ export class Game {
     this.composer.addPass(new EffectPass(this.camera, bloom, chroma, grain, vignette, lensDirt));
     this.composer.setSize(VIEW_W, VIEW_H);
 
-    window.addEventListener('keydown', (e) => this.keys.add(e.code));
+    window.addEventListener('keydown', (e) => {
+      if (!this.audioReady && !e.repeat) {
+        this.audioReady = true;
+        this.audio.init();
+      }
+      this.keys.add(e.code);
+    });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('resize', () => this.fitCanvas());
     this.fitCanvas();
@@ -218,6 +228,11 @@ export class Game {
 
     // Dialogue typewriter effect
     this.dialogue.update(dt);
+
+    // Audio
+    const walking = this.keys.has('ArrowLeft') || this.keys.has('KeyA')
+                 || this.keys.has('ArrowRight') || this.keys.has('KeyD');
+    this.audio.update(dt, walking);
 
     this.puddles.update(this.camera, dt);
     this.puddles.render(this.renderer, this.scene);
