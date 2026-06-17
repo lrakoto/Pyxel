@@ -10,6 +10,15 @@ export const TUNING = {
   pedestrianCount: 24,
   pedSpeedMin: 0.7,
   pedSpeedMax: 1.6,
+  scarfLength: 1.15,
+  scarfWidth: 0.045,
+  scarfGravity: 4.5,
+  scarfDamping: 0.8,
+  scarfWind: 0,
+  scarfLoft: 1.6,
+  scarfFlutter: 3,
+  scarfStiffness: 14,
+  scarfGlow: 2,
 };
 
 export type TuningKey = keyof typeof TUNING;

@@ -29,7 +29,8 @@ const CSS = `
 `;
 
 function fmt(value: number, step: number): string {
-  return step < 1 ? value.toFixed(2) : String(value);
+  if (step >= 1) return String(value);
+  return value.toFixed(step < 0.05 ? 3 : 2);
 }
 
 export function createTuningPanel(handlers: TuningHandlers): void {

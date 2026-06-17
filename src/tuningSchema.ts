@@ -19,4 +19,13 @@ export const TUNING_SCHEMA: TuningParam[] = [
   { key: 'pedestrianCount', label: 'Count', min: 0, max: 24, step: 1, group: 'Pedestrians' },
   { key: 'pedSpeedMin', label: 'Speed min', min: 0.2, max: 2, step: 0.05, group: 'Pedestrians' },
   { key: 'pedSpeedMax', label: 'Speed max', min: 0.5, max: 3, step: 0.05, group: 'Pedestrians' },
+  { key: 'scarfLength', label: 'Length', min: 0.3, max: 1.8, step: 0.05, group: 'Scarf' },
+  { key: 'scarfWidth', label: 'Width', min: 0.02, max: 0.16, step: 0.005, group: 'Scarf' },
+  { key: 'scarfGravity', label: 'Gravity', min: 0, max: 16, step: 0.5, group: 'Scarf' },
+  { key: 'scarfDamping', label: 'Damping', min: 0.8, max: 0.99, step: 0.005, group: 'Scarf' },
+  { key: 'scarfWind', label: 'Wind', min: 0, max: 10, step: 0.1, group: 'Scarf' },
+  { key: 'scarfLoft', label: 'Loft', min: 0, max: 5, step: 0.1, group: 'Scarf' },
+  { key: 'scarfFlutter', label: 'Flutter', min: 0, max: 3, step: 0.05, group: 'Scarf' },
+  { key: 'scarfStiffness', label: 'Stiffness', min: 2, max: 14, step: 1, group: 'Scarf' },
+  { key: 'scarfGlow', label: 'Edge glow', min: 0, max: 2, step: 0.05, group: 'Scarf' },
 ];

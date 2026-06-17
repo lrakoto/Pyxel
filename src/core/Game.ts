@@ -61,6 +61,7 @@ export class Game {
 
     this.player = new Player();
     this.scene.add(this.player.mesh);
+    this.scene.add(this.player.scarfMesh); // sim runs in world space, not parented
     // Soft fill that follows Cole so the sprite stays readable in deep shadow.
     this.playerLight = new THREE.PointLight('#7e9bd0', 10, 9, 2);
     this.scene.add(this.playerLight);

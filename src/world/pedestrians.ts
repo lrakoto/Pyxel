@@ -16,7 +16,6 @@ import type { Updatable } from './sector7';
 // a person seen from the side. '.' is transparent; letters map through a palette.
 const COAT_BODY = [
   '...HHH....',
-  '..HHHH....',
   '..HHHf....',
   '..CCCC....',
   '..CCCCC...',
@@ -27,11 +26,11 @@ const COAT_BODY = [
   '..CCCCC...',
   '..CCCC....',
   '..CCCC....',
+  '..CCCC....',
 ];
 
 const HOOD_BODY = [
   '...kkk....',
-  '..kkkk....',
   '..kkkf....',
   '..kkkk....',
   '..kkkkk...',
@@ -39,6 +38,7 @@ const HOOD_BODY = [
   '..kkkkkk..',
   '..kkkkk...',
   '..kkkkk...',
+  '..kkkk....',
   '..kkkk....',
   '..kkkk....',
   '..kkkk....',
