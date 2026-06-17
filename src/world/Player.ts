@@ -14,29 +14,30 @@ const PALETTE: Record<string, string> = {
   H: '#14171d', // hat
   h: '#20242c', // hat brim
   S: '#c49070', // skin
-  e: '#41301f', // brow / eye
+  g: '#0d0f13', // sunglasses lens
   C: '#2c333d', // trench coat
   D: '#1b212a', // coat shadow (back seam, hem)
   L: '#3a4350', // coat highlight (lapel, shoulder)
-  G: '#9a7c38', // muted gold scarf
+  G: '#ee4444', // bright red scarf
+  b: '#1a1f28', // hat band
   P: '#20242c', // trousers
   B: '#0d0f13', // boots
 };
 
 // Head + coat in profile, facing right. Shared across all frames (rows 0–21).
 const BODY = [
-  '.....HHHH.....',
-  '....HHHHHH....',
-  '...HHHHHHHH...',
-  '..hhhhhhhhhhh.',
+  '....HHHHH.....', // fedora crown top
+  '...HHHHHHH....', // fedora crown
+  '..bHHHHHHHb..', // fedora crown with hat band
+  '..hhhhhhhhhhh.', // fedora brim
   '....SSSSSS....',
-  '....SSSSSef...',
+  '....SSSggg....', // sunglasses
   '....SSSSSS....',
   '.....SSSSS....',
   '....GGGGGG....',
   '...GGGGGGGG...',
   '..LCCCCCCCC...',
-  '..CCCCCCCCC...',
+  '..CCCCCCCLC...', // coat with front edge highlight
   '..CDCCCCCCC...',
   '..CDCCCCCCC...',
   '..CDCCCCCC....',
@@ -97,6 +98,8 @@ uniform vec3 uRimColor;
 uniform float uRimDirX;
 uniform float uRimUp;
 uniform vec2 uRimTexel;
+uniform float uSpeed;
+uniform float uLensPos;
 `;
 
 const RIM_GLSL = `
@@ -108,6 +111,19 @@ const RIM_GLSL = `
                 + max(-uRimDirX, 0.0) * rimL
                 + uRimUp * rimU;
   gl_FragColor.rgb += uRimColor * clamp(rimEdge, 0.0, 1.5);
+
+  // Reflection sweeps across sunglasses opposite to movement
+  float lensLeft = 0.48;
+  float lensRight = 0.74;
+  float lensWidth = lensRight - lensLeft;
+  float rawPos = uLensPos;
+  float pos = lensLeft + rawPos * lensWidth;
+  float edgeFade = smoothstep(0.0, 0.025, rawPos) * smoothstep(1.0, 0.975, rawPos);
+  float dx = vMapUv.x - pos;
+  float dy = vMapUv.y - 0.80;
+  float highlight = 1.0 - smoothstep(0.008, 0.035, sqrt(dx * dx + dy * dy));
+  float sheen = highlight * smoothstep(0.1, 0.5, uSpeed) * 3.5 * edgeFade;
+  gl_FragColor.rgb += vec3(sheen * 0.75, sheen * 0.88, sheen);
 #endif
 `;
 
@@ -145,6 +161,7 @@ class Scarf {
   private segLen = 0;
   private readonly env = { value: new THREE.Color(0, 0, 0) };
   private readonly glow = { value: TUNING.scarfGlow };
+  private readonly dirX = { value: 0 };
   private t = 0;
   // Verlet point positions and their previous positions, in world space.
   private x: number[] = [];
@@ -154,16 +171,17 @@ class Scarf {
 
   constructor() {
     this.material = new THREE.MeshStandardMaterial({
-      color: '#5a481c', // dark bronze-gold; the edge glow reads against it
+      color: '#ee3333', // bright red; the edge glow reads against it
       roughness: 0.55,
       metalness: 0.1,
-      emissive: new THREE.Color('#151004'),
-      emissiveIntensity: 0.1,
+      emissive: new THREE.Color('#cc2222'),
+      emissiveIntensity: 0.25,
       side: THREE.DoubleSide,
     });
     this.material.onBeforeCompile = (shader) => {
       shader.uniforms.uScarfEnv = this.env;
       shader.uniforms.uScarfGlow = this.glow;
+      shader.uniforms.uScarfDirX = this.dirX;
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nvarying float vScarfT;\nvarying float vScarfU;')
         .replace(
@@ -173,15 +191,15 @@ class Scarf {
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <common>',
-          '#include <common>\nvarying float vScarfT;\nvarying float vScarfU;\nuniform vec3 uScarfEnv;\nuniform float uScarfGlow;',
+          '#include <common>\nvarying float vScarfT;\nvarying float vScarfU;\nuniform vec3 uScarfEnv;\nuniform float uScarfGlow;\nuniform float uScarfDirX;',
         )
         .replace(
           '#include <tonemapping_fragment>',
-          `// Environment-reactive edge glow: brighten the ribbon's outline with
-           // the color of the neon currently hitting Cole.
-           float bx = smoothstep(0.40, 0.5, abs(vScarfU - 0.5));
-           float by = smoothstep(0.42, 0.5, abs(vScarfT - 0.5));
-           float border = max(bx, by);
+          `// Directional edge glow: only the side facing the light source
+           float bx = uScarfDirX > 0.0
+             ? smoothstep(0.40, 0.5, vScarfU - 0.5)
+             : smoothstep(0.40, 0.5, 0.5 - vScarfU);
+           float border = bx;
            gl_FragColor.rgb += uScarfEnv * border * uScarfGlow;
            #include <tonemapping_fragment>`,
         );
@@ -212,10 +230,11 @@ class Scarf {
     old?.dispose();
   }
 
-  update(dt: number, anchorX: number, anchorY: number, coleVx: number, env: THREE.Color) {
+  update(dt: number, anchorX: number, anchorY: number, coleVx: number, env: THREE.Color, dirX: number) {
     this.t += dt;
     this.env.value.copy(env);
     this.glow.value = TUNING.scarfGlow;
+    this.dirX.value = dirX;
     if (this.length !== TUNING.scarfLength || this.width !== TUNING.scarfWidth) {
       this.length = TUNING.scarfLength;
       this.width = TUNING.scarfWidth;
@@ -300,6 +319,7 @@ const NECK_Y = HEIGHT * 0.695;
 
 export class Player {
   readonly mesh: THREE.Mesh;
+  readonly shadowObject: THREE.Mesh;
   x = 0;
 
   private readonly frames: THREE.Texture[];
@@ -314,7 +334,10 @@ export class Player {
     uRimDirX: { value: 0 },
     uRimUp: { value: 0.3 },
     uRimTexel: { value: new THREE.Vector2(1 / SPRITE_W, 1 / SPRITE_H) },
+    uSpeed: { value: 0 },
+    uLensPos: { value: 0 },
   };
+  private lensPos = 0.5;
 
   constructor() {
     if (import.meta.env.DEV) {
@@ -352,6 +375,27 @@ export class Player {
     const width = HEIGHT * (SPRITE_W / SPRITE_H);
     this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, HEIGHT), this.material);
     this.mesh.position.set(0, HEIGHT / 2, 0);
+
+    // Ground shadow
+    const shadowCanvas = document.createElement('canvas');
+    shadowCanvas.width = 64;
+    shadowCanvas.height = 64;
+    const sctx = shadowCanvas.getContext('2d')!;
+    const grad = sctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(0,0,0,0.55)');
+    grad.addColorStop(0.3, 'rgba(0,0,0,0.30)');
+    grad.addColorStop(0.6, 'rgba(0,0,0,0.10)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    sctx.fillStyle = grad;
+    sctx.fillRect(0, 0, 64, 64);
+    const shadowTex = new THREE.CanvasTexture(shadowCanvas);
+    this.shadowObject = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.2, 0.35),
+      new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, opacity: 0.8 }),
+    );
+    this.shadowObject.rotation.x = -Math.PI / 2;
+    this.shadowObject.position.set(0, 0.02, -4);
+    this.shadowObject.renderOrder = -1;
   }
 
   /** The scarf simulates in world space, so Game adds it to the scene directly. */
@@ -382,12 +426,19 @@ export class Player {
     this.mesh.scale.x = this.facing;
     const bob = walking ? Math.abs(Math.sin(performance.now() * 0.012)) * 0.035 : 0;
     this.mesh.position.y = HEIGHT / 2 + bob;
+    this.shadowObject.position.x = this.x;
 
     // Drive the cloth sim from the neck's world position and Cole's velocity.
     // The rim color is last frame's aggregated neon — a frame's lag is invisible.
     const coleVx = dt > 0 ? (this.x - this.prevX) / dt : 0;
     this.prevX = this.x;
-    this.scarf.update(dt, this.x, NECK_Y + bob, coleVx, this.rimUniforms.uRimColor.value);
+    this.rimUniforms.uSpeed.value = Math.abs(coleVx) / SPEED;
+    if (Math.abs(coleVx) > 0.1) {
+      this.lensPos -= Math.sign(coleVx) * this.facing * dt * 0.7;
+    }
+    this.lensPos = ((this.lensPos % 1) + 1) % 1;
+    this.rimUniforms.uLensPos.value = this.lensPos;
+    this.scarf.update(dt, this.x, NECK_Y + bob, coleVx, this.rimUniforms.uRimColor.value, this.rimUniforms.uRimDirX.value);
   }
 
   /**

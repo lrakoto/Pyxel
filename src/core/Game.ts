@@ -60,6 +60,7 @@ export class Game {
     this.signLights = world.signLights;
 
     this.player = new Player();
+    this.scene.add(this.player.shadowObject);
     this.scene.add(this.player.mesh);
     this.scene.add(this.player.scarfMesh); // sim runs in world space, not parented
     // Soft fill that follows Cole so the sprite stays readable in deep shadow.
