@@ -42,8 +42,21 @@ docs/
 ## Roadmap
 
 1. ✅ REPLACED-style render pipeline proof-of-scene (walkable Sector 7 street)
-2. CTB battle system (FFX-style conditional turn-based queue) with HTML/CSS battle UI
+2. 🚧 **CTB battle system** (FFX-style conditional turn-based queue) with HTML/CSS battle UI
+   - State machine ready (`ExploreState` / `BattleState`), skeleton overlay in place
 3. Scene/state management (street ↔ battle transitions)
 4. Dialogue and investigation systems
 5. Real sprite art pipeline (Aseprite sheets + normal maps for sprite lighting)
 6. Audio (ambient rain loop, neon hum, battle themes)
+
+## Recent additions
+
+This branch adds several visual and gameplay systems beyond the initial proof-of-scene:
+
+- **Investigation dialogue** — 14 interactable objects with noir-flavoured examination text, typewriter reveal
+- **Procedural audio** — rain (2-layer noise), neon hum, ambient drone, footstep impacts, all via Web Audio API
+- **Scene state machine** — `GameState` / `StateMachine` pattern ready for battle integration
+- **Weather / atmosphere** — rain splash particles, volumetric sign light beams, puddle chromatic aberration
+- **Character polish** — 3-frame walk cycle, idle breathing, fedora brim shadow, lens edge fade on sunglasses, scarf glint catch
+- **Environment density** — 3 more neon signs, animated windows, distant traffic dots, pedestrian umbrellas
+- **Post-processing** — lens dirt overlay, lower bloom threshold, darker ambient for stronger neon contrast
