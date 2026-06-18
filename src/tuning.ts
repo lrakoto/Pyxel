@@ -3,7 +3,7 @@
 // with the sliders rather than editing by hand, so the panel stays in sync.
 export const TUNING = {
   bumpScale: 1,
-  groundRoughness: 0.28,
+  groundRoughness: 0.2,
   groundMetalness: 0,
   gritCount: 30000,
   crackCount: 16,
