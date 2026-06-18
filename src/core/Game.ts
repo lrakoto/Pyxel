@@ -16,35 +16,21 @@ import { Rain } from '../world/Rain';
 import { RainSplash } from '../world/RainSplash';
 import { AudioManager } from './AudioManager';
 import { DialogueManager } from '../world/dialogue';
-import { buildSector7, type Sector7World, type Updatable } from '../world/sector7';
+import { buildSector7 } from '../world/sector7';
+import { StateMachine } from './states/StateMachine';
+import { ExploreState } from './states/ExploreState';
+import type { GameContext } from './states/GameContext';
 
-// The frame is rendered at a fixed low resolution, then upscaled with
-// image-rendering: pixelated — that mix of chunky pixels and smooth HDR
-// lighting/bloom is the core of the REPLACED-style look.
-// 960×540 scales 2× to 1080p and 4× to 4K with no shimmer.
 const VIEW_W = 960;
 const VIEW_H = 540;
 
 export class Game {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly composer: EffectComposer;
-  private readonly camera: THREE.PerspectiveCamera;
-  private readonly scene: THREE.Scene;
-  private readonly player: Player;
-  private readonly playerLight: THREE.PointLight;
-  private readonly rain: Rain;
-  private readonly rainFar: Rain;
-  private readonly splashes: RainSplash;
-  private readonly puddles: PuddleSystem;
-  private readonly updatables: Updatable[];
-  private readonly signLights: THREE.PointLight[];
-  private readonly world: Sector7World;
-  private readonly dialogue: DialogueManager;
-  private readonly audio: AudioManager;
+  private readonly ctx: GameContext;
+  private readonly state: StateMachine;
   private audioReady = false;
-  private readonly keys = new Set<string>();
   private readonly clock = new THREE.Clock();
-  private camX = 0;
 
   constructor(container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({
@@ -58,76 +44,58 @@ export class Game {
     this.renderer.toneMappingExposure = 1.15;
     container.appendChild(this.renderer.domElement);
 
-    this.camera = new THREE.PerspectiveCamera(38, VIEW_W / VIEW_H, 0.1, 200);
-    this.camera.position.set(0, 2.4, 16);
+    const camera = new THREE.PerspectiveCamera(38, VIEW_W / VIEW_H, 0.1, 200);
+    camera.position.set(0, 2.4, 16);
 
     const world = buildSector7();
-    this.world = world;
-    this.scene = world.scene;
-    this.updatables = world.updatables;
-    this.signLights = world.signLights;
+    const scene = world.scene;
 
-    this.player = new Player();
-    this.scene.add(this.player.shadowObject);
-    this.scene.add(this.player.mesh);
-    this.scene.add(this.player.scarfMesh); // sim runs in world space, not parented
-    // Soft fill that follows Cole so the sprite stays readable in deep shadow.
-    this.playerLight = new THREE.PointLight('#7e9bd0', 10, 9, 2);
-    this.scene.add(this.playerLight);
+    const player = new Player();
+    scene.add(player.shadowObject);
+    scene.add(player.mesh);
+    scene.add(player.scarfMesh);
+    const playerLight = new THREE.PointLight('#7e9bd0', 10, 9, 2);
+    scene.add(playerLight);
 
-    this.rain = new Rain();
-    this.scene.add(this.rain.object);
-    // Slow sparse drizzle deep in the scene, in front of the painted skyline.
-    this.rainFar = new Rain({
-      count: 320,
-      top: 26,
-      spanX: 95,
-      zMin: -65,
-      zMax: -34,
-      velX: -1,
-      velY: -5.5,
-      tail: 0.09,
-      opacity: 0.15,
+    const rain = new Rain();
+    scene.add(rain.object);
+    const rainFar = new Rain({
+      count: 320, top: 26, spanX: 95, zMin: -65, zMax: -34,
+      velX: -1, velY: -5.5, tail: 0.09, opacity: 0.15,
     });
-    this.scene.add(this.rainFar.object);
-    this.rain.object.userData.noReflect = true;
-    this.rainFar.object.userData.noReflect = true;
+    scene.add(rainFar.object);
+    rain.object.userData.noReflect = true;
+    rainFar.object.userData.noReflect = true;
 
-    this.splashes = new RainSplash();
-    this.scene.add(this.splashes.group);
+    const splashes = new RainSplash();
+    scene.add(splashes.group);
 
-    this.dialogue = new DialogueManager();
-    this.audio = new AudioManager();
+    const dialogue = new DialogueManager();
+    const audio = new AudioManager();
+    const keys = new Set<string>();
 
-    // Mirror puddles: marked last so the reflection layer covers the whole
-    // assembled scene (buildings, signs, props, Cole, lights).
-    this.puddles = new PuddleSystem();
-    this.scene.add(this.puddles.group);
-    this.puddles.markReflectables(this.scene);
+    const puddles = new PuddleSystem();
+    scene.add(puddles.group);
+    puddles.markReflectables(scene);
 
     this.composer = new EffectComposer(this.renderer, {
       frameBufferType: THREE.HalfFloatType,
     });
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.composer.addPass(new RenderPass(scene, camera));
     const bloom = new BloomEffect({
-      intensity: 1.15,
-      luminanceThreshold: 0.15,
-      luminanceSmoothing: 0.3,
-      mipmapBlur: true,
+      intensity: 1.15, luminanceThreshold: 0.15,
+      luminanceSmoothing: 0.3, mipmapBlur: true,
     });
     const chroma = new ChromaticAberrationEffect({
       offset: new THREE.Vector2(0.0011, 0.0007),
-      radialModulation: true,
-      modulationOffset: 0.25,
+      radialModulation: true, modulationOffset: 0.25,
     });
     const grain = new NoiseEffect({
-      blendFunction: BlendFunction.COLOR_DODGE,
-      premultiply: true,
+      blendFunction: BlendFunction.COLOR_DODGE, premultiply: true,
     });
     grain.blendMode.opacity.value = 0.5;
     const vignette = new VignetteEffect({ offset: 0.28, darkness: 0.62 });
 
-    // Procedural lens dirt: dust specks and faint scratches on a dark canvas
     const dirtCanvas = document.createElement('canvas');
     dirtCanvas.width = 256;
     dirtCanvas.height = 256;
@@ -151,29 +119,50 @@ export class Game {
     }
     const dirtTex = new THREE.CanvasTexture(dirtCanvas);
     const lensDirt = new TextureEffect({
-      texture: dirtTex,
-      blendFunction: BlendFunction.MULTIPLY,
+      texture: dirtTex, blendFunction: BlendFunction.MULTIPLY,
     });
     lensDirt.blendMode.opacity.value = 0.15;
-
-    this.composer.addPass(new EffectPass(this.camera, bloom, chroma, grain, vignette, lensDirt));
+    this.composer.addPass(new EffectPass(camera, bloom, chroma, grain, vignette, lensDirt));
     this.composer.setSize(VIEW_W, VIEW_H);
+
+    // Build the shared game context
+    this.ctx = {
+      renderer: this.renderer,
+      composer: this.composer,
+      camera,
+      scene,
+      player,
+      playerLight,
+      rain,
+      rainFar,
+      splashes,
+      puddles,
+      updatables: world.updatables,
+      signLights: world.signLights,
+      world,
+      dialogue,
+      audio,
+      keys,
+      camX: 0,
+    };
+
+    this.state = new StateMachine(this.ctx);
+    this.state.transition(new ExploreState());
 
     window.addEventListener('keydown', (e) => {
       if (!this.audioReady && !e.repeat) {
         this.audioReady = true;
-        this.audio.init();
+        this.ctx.audio.init();
       }
-      this.keys.add(e.code);
+      this.ctx.keys.add(e.code);
     });
-    window.addEventListener('keyup', (e) => this.keys.delete(e.code));
+    window.addEventListener('keyup', (e) => this.ctx.keys.delete(e.code));
     window.addEventListener('resize', () => this.fitCanvas());
     this.fitCanvas();
 
     this.renderer.setAnimationLoop(() => this.tick());
   }
 
-  /** Scales the fixed-resolution canvas to fit the window, letterboxed. */
   private fitCanvas() {
     const scale = Math.min(window.innerWidth / VIEW_W, window.innerHeight / VIEW_H);
     const canvas = this.renderer.domElement;
@@ -183,59 +172,7 @@ export class Game {
 
   private tick() {
     const dt = Math.min(this.clock.getDelta(), 0.05);
-
-    // Dialogue input takes priority — freezes movement while open
-    if (this.dialogue.isOpen) {
-      if (this.keys.has('KeyE') || this.keys.has('Space')) {
-        this.keys.delete('KeyE');
-        this.keys.delete('Space');
-        this.dialogue.advance();
-      }
-      // Close if player walks out of range
-      const nearby = this.dialogue.findNearby(this.player.x);
-      if (!nearby) this.dialogue.close();
-    } else {
-      this.player.update(dt, {
-        left: this.keys.has('ArrowLeft') || this.keys.has('KeyA'),
-        right: this.keys.has('ArrowRight') || this.keys.has('KeyD'),
-      });
-      this.playerLight.position.set(this.player.x + 0.4, 2.3, 2.2);
-      this.player.updateRim(this.signLights);
-      this.rain.update(dt, this.camX);
-      this.rainFar.update(dt, 0);
-      this.splashes.update(dt, this.camX);
-      for (const u of this.updatables) u.update(dt);
-
-      this.camX += (this.player.x * 0.9 - this.camX) * Math.min(1, dt * 3);
-      this.camera.position.x = this.camX;
-      this.camera.lookAt(this.camX, 2.0, 0);
-      this.world.viewPoint.copy(this.camera.position);
-
-      // Interaction proximity
-      const nearby = this.dialogue.findNearby(this.player.x);
-      const hintEl = document.getElementById('interact-hint')!;
-      if (nearby) {
-        hintEl.style.display = 'block';
-        if (this.keys.has('KeyE')) {
-          this.keys.delete('KeyE');
-          this.dialogue.openDialogue(nearby);
-          hintEl.style.display = 'none';
-        }
-      } else {
-        hintEl.style.display = 'none';
-      }
-    }
-
-    // Dialogue typewriter effect
-    this.dialogue.update(dt);
-
-    // Audio
-    const walking = this.keys.has('ArrowLeft') || this.keys.has('KeyA')
-                 || this.keys.has('ArrowRight') || this.keys.has('KeyD');
-    this.audio.update(dt, walking);
-
-    this.puddles.update(this.camera, dt);
-    this.puddles.render(this.renderer, this.scene);
+    this.state.update(dt);
     this.composer.render(dt);
   }
 }
