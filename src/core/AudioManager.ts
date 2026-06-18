@@ -6,22 +6,33 @@
  * to satisfy browser autoplay policies.
  */
 
-const FOOTSTEP_INTERVAL = 0.16; // matches the animation FRAME_TIME
+import { TUNING } from '../tuning';
+
+/** exponentialRampToValueAtTime can't target 0, so floor slider-driven peaks. */
+const audible = (v: number) => Math.max(v, 0.0001);
 
 export class AudioManager {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private footstepTimer = 0;
+  private stepParity = 0;
 
   /** Initialises the AudioContext and wires up all continuous sound sources. */
   init() {
     if (this.ctx) return;
     this.ctx = new AudioContext();
 
-    // Master gain (all sounds route through this)
+    // Master gain (all sounds route through this) → a limiter that tames
+    // transient peaks so footsteps can be loud without clipping the mix.
     this.master = this.ctx.createGain();
-    this.master.gain.value = 0.4;
-    this.master.connect(this.ctx.destination);
+    this.master.gain.value = 0.5;
+    const limiter = this.ctx.createDynamicsCompressor();
+    limiter.threshold.value = -6;
+    limiter.knee.value = 6;
+    limiter.ratio.value = 12;
+    limiter.attack.value = 0.002;
+    limiter.release.value = 0.12;
+    this.master.connect(limiter).connect(this.ctx.destination);
 
     this.startRain();
     this.startHum();
@@ -125,21 +136,56 @@ export class AudioManager {
 
   private playFootstep() {
     const ctx = this.ctx!;
-    const buf = this.createNoiseBuffer(0.06);
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
+    const t = ctx.currentTime;
+    // Alternate feet: a small pitch offset keeps it from sounding mechanical.
+    this.stepParity ^= 1;
+    const detune = this.stepParity ? 1 : 0.94;
+    const vol = TUNING.footstepVolume;
 
+    // Sharp heel "clack" — a bright, short noise transient through a resonant
+    // bandpass, for the hard crack of a sole on concrete. This is the loud,
+    // defining layer; its mid-high energy carries on any speaker.
+    const src = ctx.createBufferSource();
+    src.buffer = this.createNoiseBuffer(0.04);
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 750;
     const bp = ctx.createBiquadFilter();
     bp.type = 'bandpass';
-    bp.frequency.value = 600 + Math.random() * 400;
-    bp.Q.value = 1.5;
+    bp.frequency.value = TUNING.footstepTone * detune;
+    bp.Q.value = 2.2;
+    const clack = ctx.createGain();
+    clack.gain.setValueAtTime(audible(TUNING.footstepClack * vol), t);
+    clack.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
+    src.connect(hp).connect(bp).connect(clack).connect(this.master!);
+    src.start(t);
 
-    const env = ctx.createGain();
-    env.gain.setValueAtTime(0.35, ctx.currentTime);
-    env.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06);
+    // Resonant "tok" — a fast-decaying pitched snap that gives the heel its
+    // hard, tonal ring on stone (sits between the crack and the low knock).
+    const ping = ctx.createOscillator();
+    ping.type = 'triangle';
+    ping.frequency.setValueAtTime(1350 * detune, t);
+    ping.frequency.exponentialRampToValueAtTime(720 * detune, t + 0.03);
+    const pingEnv = ctx.createGain();
+    pingEnv.gain.setValueAtTime(0.0001, t);
+    pingEnv.gain.exponentialRampToValueAtTime(audible(TUNING.footstepPing * vol), t + 0.003);
+    pingEnv.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+    ping.connect(pingEnv).connect(this.master!);
+    ping.start(t);
+    ping.stop(t + 0.06);
 
-    src.connect(bp).connect(env).connect(this.master!);
-    src.start(ctx.currentTime);
+    // A small, tight low knock just to ground the step — no boomy thud.
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(150 * detune, t);
+    osc.frequency.exponentialRampToValueAtTime(85 * detune, t + 0.04);
+    const knock = ctx.createGain();
+    knock.gain.setValueAtTime(0.0001, t);
+    knock.gain.exponentialRampToValueAtTime(audible(TUNING.footstepKnock * vol), t + 0.005);
+    knock.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+    osc.connect(knock).connect(this.master!);
+    osc.start(t);
+    osc.stop(t + 0.1);
   }
 
   /* ── Per-frame update ──────────────────────────────────────────────── */
@@ -150,8 +196,8 @@ export class AudioManager {
 
     if (walking) {
       this.footstepTimer += dt;
-      if (this.footstepTimer >= FOOTSTEP_INTERVAL) {
-        this.footstepTimer -= FOOTSTEP_INTERVAL;
+      if (this.footstepTimer >= TUNING.footstepInterval) {
+        this.footstepTimer -= TUNING.footstepInterval;
         this.playFootstep();
       }
     } else {

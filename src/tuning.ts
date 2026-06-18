@@ -3,7 +3,7 @@
 // with the sliders rather than editing by hand, so the panel stays in sync.
 export const TUNING = {
   bumpScale: 1,
-  groundRoughness: 0.22,
+  groundRoughness: 0.28,
   groundMetalness: 0,
   gritCount: 30000,
   crackCount: 16,
@@ -19,6 +19,12 @@ export const TUNING = {
   scarfFlutter: 3,
   scarfStiffness: 14,
   scarfGlow: 2,
+  footstepInterval: 0.46,
+  footstepVolume: 2.05,
+  footstepClack: 3,
+  footstepPing: 0.45,
+  footstepKnock: 2,
+  footstepTone: 800,
 };
 
 export type TuningKey = keyof typeof TUNING;

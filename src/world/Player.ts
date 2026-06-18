@@ -29,7 +29,7 @@ const PALETTE: Record<string, string> = {
 const BODY = [
   '....HHHHH.....', // fedora crown top
   '...HHHHHHH....', // fedora crown
-  '..bHHHHHHHb..', // fedora crown with hat band
+  '..bHHHHHHHHb..', // fedora crown with hat band
   '..hhhhhhhhhhh.', // fedora brim
   '....fSSSSS....',
   '....SSSggg....', // sunglasses

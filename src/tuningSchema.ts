@@ -28,4 +28,10 @@ export const TUNING_SCHEMA: TuningParam[] = [
   { key: 'scarfFlutter', label: 'Flutter', min: 0, max: 3, step: 0.05, group: 'Scarf' },
   { key: 'scarfStiffness', label: 'Stiffness', min: 2, max: 14, step: 1, group: 'Scarf' },
   { key: 'scarfGlow', label: 'Edge glow', min: 0, max: 2, step: 0.05, group: 'Scarf' },
+  { key: 'footstepInterval', label: 'Cadence', min: 0.2, max: 1, step: 0.02, group: 'Footsteps' },
+  { key: 'footstepVolume', label: 'Volume', min: 0, max: 3, step: 0.05, group: 'Footsteps' },
+  { key: 'footstepClack', label: 'Clack', min: 0, max: 3, step: 0.05, group: 'Footsteps' },
+  { key: 'footstepPing', label: 'Tok', min: 0, max: 2, step: 0.05, group: 'Footsteps' },
+  { key: 'footstepKnock', label: 'Knock', min: 0, max: 2, step: 0.05, group: 'Footsteps' },
+  { key: 'footstepTone', label: 'Tone (Hz)', min: 800, max: 5000, step: 100, group: 'Footsteps' },
 ];
