@@ -12,6 +12,7 @@ export class BattleState extends GameState {
   }
 
   enter(ctx: GameContext) {
+    ctx.keys.clear();
     const overlay = document.getElementById('battle-overlay');
     if (overlay) overlay.style.display = 'flex';
   }
@@ -22,9 +23,9 @@ export class BattleState extends GameState {
   }
 
   update(ctx: GameContext, dt: number): GameState | null {
-    // Any key returns to the street
-    if (ctx.keys.size > 0) {
-      ctx.keys.clear();
+    if (ctx.keys.has('Space') || ctx.keys.has('Enter')) {
+      ctx.keys.delete('Space');
+      ctx.keys.delete('Enter');
       return new ExploreState();
     }
     return null;
