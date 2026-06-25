@@ -109,6 +109,17 @@ He is not special because he is the strongest, smartest, or most technologically
 
 AI can analyze evidence. Cyborgs can replay memories. Surveillance systems can reconstruct crime scenes. Predictive engines can guess motives. But Cole can sense meaning. He sees contradiction. Pain. Shame. Love. Hesitation. The human residue that data cannot fully explain. His gift is not calculation — it is interpretation.
 
+### What makes Cole exceptional
+
+Cole stands out for a rare convergence of traits, not a single super-power:
+
+- **An unusual affinity for synthetic augmentation.** In New Angeles most bodies reject the machine. Augs exact a toll — neural inflammation, dissociation, tremors, memory bleed, mood collapse, "chrome sickness" — so the vast majority of people can only tolerate a few implants, and only certain types, before the side effects limit how long and how hard they can run them. Cole is a physiological outlier: a **surprisingly high tolerance with minimal side effects**, letting him carry and sustain augmentations that would cripple or unmake other people. He can push his enhancements harder, longer, and in combinations the body is not supposed to survive.
+- **Natural agility and physical endurance.** Even setting the augs aside, Cole's baseline body is gifted — fast, balanced, hard to put down, slow to tire. The augmentations amplify an already capable frame rather than compensating for a weak one, which is part of why they sit so well on him.
+- **High intellectual ability.** The interpretive gift above is paired with raw cognitive horsepower — he reasons fast, holds contradictions in his head, and reads systems and people alike.
+- **A genuine moral compass.** In a city where everyone can deny responsibility, Cole still feels it. His ethics are not naïve, but they are real, and they make him refuse the easy complicity the system runs on.
+
+The combination is what makes him dangerous: the aug tolerance and natural athleticism make him formidable and durable **in combat** — able to move, take hits, and keep fighting where others would seize up or burn out — while the intellect and moral compass make him a detective the system can't easily predict, buy, or hollow out. He is not the strongest or the most enhanced; he is the one in whom mind, body, and machine cohere instead of tearing each other apart.
+
 ### Cole's possible inner wound
 
 Cole should have a personal reason to distrust both AI and people. Possible backstory: someone close to him was "harvested" and survived physically but became emotionally absent. A parent, sibling, former partner, mentor, or child-like figure lost their creative essence. They were still alive, but the part Cole loved most was gone. This makes the case personal without him needing to know that at the beginning.

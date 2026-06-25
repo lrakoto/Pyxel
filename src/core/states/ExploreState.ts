@@ -1,6 +1,6 @@
 import { GameState } from './StateMachine';
 import type { GameContext } from './GameContext';
-import { BattleState } from './BattleState';
+import { ShooterState } from './ShooterState';
 
 export class ExploreState extends GameState {
   get name(): string {
@@ -59,10 +59,10 @@ export class ExploreState extends GameState {
     puddles.update(camera, dt);
     puddles.render(renderer, scene);
 
-    // Dev trigger: B key enters battle stub
+    // Dev trigger: B key enters the shooter combat
     if (keys.has('KeyB')) {
       keys.delete('KeyB');
-      return new BattleState();
+      return new ShooterState();
     }
 
     return null;

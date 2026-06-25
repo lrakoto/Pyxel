@@ -94,6 +94,8 @@ const SPRITE_H = 28;
 export interface MoveInput {
   left: boolean;
   right: boolean;
+  /** Edge-triggered: true on the frame a jump should start (caller debounces). */
+  jump?: boolean;
 }
 
 /**
@@ -159,6 +161,9 @@ const SPEED = 4.2;
 const WORLD_BOUND = 16;
 const FRAME_TIME = 0.16;
 const HEIGHT = 1.7;
+// Jump: tuned so a tap clears ~1.4 world units and hangs for ~0.7s.
+const JUMP_V = 6.4;
+const GRAVITY = 18;
 
 /**
  * The scarf's loose tail: a thin cloth ribbon simulated as a verlet chain of
@@ -370,6 +375,8 @@ export class Player {
   private frame = 0;
   private animTimer = 0;
   private prevX = 0;
+  private jumpY = 0; // height of feet above the ground (0 = grounded)
+  private vy = 0;
   private readonly rimUniforms = {
     uRimColor: { value: new THREE.Color(0, 0, 0) },
     uRimDirX: { value: 0 },
@@ -469,19 +476,49 @@ export class Player {
       this.material.map = this.frames[0];
     }
 
+    // Jump physics. A jump only starts from the ground; gravity then arcs the
+    // body up and back down, landing the feet at y=0.
+    if (input.jump && this.jumpY <= 0) {
+      this.vy = JUMP_V;
+    }
+    if (this.vy !== 0 || this.jumpY > 0) {
+      this.jumpY += this.vy * dt;
+      this.vy -= GRAVITY * dt;
+      if (this.jumpY <= 0) {
+        this.jumpY = 0;
+        this.vy = 0;
+      }
+    }
+    const airborne = this.jumpY > 0;
+
     this.mesh.position.x = this.x;
     this.mesh.scale.x = this.facing;
     const breathe = Math.sin(performance.now() * 0.003) * 0.008;
-    const bob = walking ? Math.abs(Math.sin(performance.now() * 0.012)) * 0.035 : breathe;
-    this.mesh.position.y = HEIGHT / 2 + bob;
+    const bob = airborne ? 0 : walking ? Math.abs(Math.sin(performance.now() * 0.012)) * 0.035 : breathe;
+    this.mesh.position.y = HEIGHT / 2 + bob + this.jumpY;
     this.shadowObject.position.x = this.x;
+    // The ground shadow shrinks and fades as Cole rises, reading as height.
+    const lift = THREE.MathUtils.clamp(this.jumpY / 1.6, 0, 1);
+    const shadowScale = 1 - lift * 0.45;
+    this.shadowObject.scale.set(shadowScale, shadowScale, 1);
+    (this.shadowObject.material as THREE.MeshBasicMaterial).opacity = 0.8 * (1 - lift * 0.6);
 
     // Drive the cloth sim from the neck's world position and Cole's velocity.
     // The rim color is last frame's aggregated neon — a frame's lag is invisible.
     const coleVx = dt > 0 ? (this.x - this.prevX) / dt : 0;
     this.prevX = this.x;
     this.rimUniforms.uSpeed.value = Math.abs(coleVx) / SPEED;
-    this.scarf.update(dt, this.x, NECK_Y + bob, coleVx, this.rimUniforms.uRimColor.value, this.rimUniforms.uRimDirX.value);
+    this.scarf.update(dt, this.x, NECK_Y + bob + this.jumpY, coleVx, this.rimUniforms.uRimColor.value, this.rimUniforms.uRimDirX.value);
+  }
+
+  /** True when Cole's feet are on the ground (can start a new jump). */
+  get grounded(): boolean {
+    return this.jumpY <= 0;
+  }
+
+  /** World-space point Cole's pistol fires from (roughly his hands at chest). */
+  get muzzleY(): number {
+    return this.jumpY + HEIGHT * 0.58;
   }
 
   /**

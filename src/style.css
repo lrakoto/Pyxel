@@ -278,3 +278,95 @@ canvas {
     visibility: hidden;
   }
 }
+
+/* ---- Shooter HUD ---- */
+#shooter-hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 30;
+  font-family: ui-monospace, 'JetBrains Mono', Menlo, Consolas, monospace;
+}
+
+#shooter-hud .sh-top {
+  position: absolute;
+  left: 24px;
+  bottom: 22px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#shooter-hud .sh-label {
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: #9fb2cc;
+  text-shadow: 0 0 8px rgba(54, 224, 255, 0.25);
+}
+
+#shooter-hud .sh-bar {
+  width: 200px;
+  height: 12px;
+  border: 1px solid #2b3a4d;
+  background: rgba(8, 12, 18, 0.6);
+  box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.6);
+}
+
+#shooter-hud .sh-bar-fill {
+  height: 100%;
+  width: 100%;
+  background: #36e0ff;
+  box-shadow: 0 0 10px currentColor;
+  transition: width 0.08s linear;
+}
+
+#shooter-hud .sh-hp {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: #6b7a93;
+}
+
+#shooter-hud .sh-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 6px;
+  text-align: center;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: rgba(159, 178, 204, 0.55);
+}
+
+#sh-crosshair {
+  position: fixed;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  border: 1.5px solid rgba(54, 224, 255, 0.85);
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(54, 224, 255, 0.6), inset 0 0 5px rgba(54, 224, 255, 0.4);
+}
+
+#sh-crosshair::before,
+#sh-crosshair::after {
+  content: '';
+  position: absolute;
+  background: rgba(54, 224, 255, 0.85);
+  box-shadow: 0 0 5px rgba(54, 224, 255, 0.7);
+}
+
+#sh-crosshair::before { left: 50%; top: -6px; width: 1.5px; height: 6px; margin-left: -0.75px; }
+#sh-crosshair::after { top: 50%; left: -6px; height: 1.5px; width: 6px; margin-top: -0.75px; }
+
+#sh-crosshair.sh-down {
+  border-color: rgba(255, 61, 160, 0.85);
+  box-shadow: 0 0 8px rgba(255, 61, 160, 0.6);
+}
+
+#sh-flash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 60%, rgba(255, 61, 90, 0) 30%, rgba(255, 30, 70, 0.55) 100%);
+  opacity: 0;
+  transition: opacity 0.1s linear;
+}
