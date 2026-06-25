@@ -75,7 +75,7 @@ const SPECS: Record<EnemyKind, Spec> = {
     palette: ENFORCER_PALETTE,
     px: { w: 14, h: 16 },
     worldH: 1.75,
-    hp: 4,
+    hp: 40, // 4 pistol rounds (10 dmg each)
     speed: 2.3,
     radius: 0.62,
     contactDps: 24,
@@ -86,7 +86,7 @@ const SPECS: Record<EnemyKind, Spec> = {
     palette: DRONE_PALETTE,
     px: { w: 12, h: 8 },
     worldH: 0.85,
-    hp: 2,
+    hp: 20, // 2 pistol rounds
     speed: 3.4,
     radius: 0.5,
     contactDps: 18,
@@ -110,6 +110,8 @@ export class Enemy {
   private hitFlash = 0;
   private t = Math.random() * 10;
   private facing = 1;
+  private knockVx = 0;
+  private knockVy = 0;
 
   constructor(kind: EnemyKind, x: number) {
     this.kind = kind;
@@ -163,6 +165,18 @@ export class Enemy {
       this.facing = Math.sign(dx) || this.facing;
     }
 
+    // Apply and damp hit knockback on top of the steering.
+    if (this.knockVx !== 0 || this.knockVy !== 0) {
+      this.x += this.knockVx * dt;
+      this.y += this.knockVy * dt;
+      const damp = Math.max(0, 1 - dt * 9);
+      this.knockVx *= damp;
+      this.knockVy *= damp;
+      if (Math.abs(this.knockVx) < 0.05) this.knockVx = 0;
+      if (Math.abs(this.knockVy) < 0.05) this.knockVy = 0;
+    }
+    if (this.kind === 'ground') this.y = Math.max(this.spec.worldH / 2, this.y);
+
     this.mesh.position.set(this.x, this.y, 0);
     this.mesh.scale.x = this.facing >= 0 ? 1 : -1;
 
@@ -188,6 +202,12 @@ export class Enemy {
       return true;
     }
     return false;
+  }
+
+  /** Shoves the enemy along (dx, dy) (unit dir) with the given speed. */
+  knockback(dx: number, dy: number, speed: number) {
+    this.knockVx += dx * speed;
+    this.knockVy += dy * speed;
   }
 
   dispose() {

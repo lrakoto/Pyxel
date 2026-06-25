@@ -188,6 +188,114 @@ export class AudioManager {
     osc.stop(t + 0.1);
   }
 
+  /* ── Combat one-shots ──────────────────────────────────────────────── */
+
+  /**
+   * Machine-pistol crack: a short bright noise transient (the report) layered
+   * with a fast low "body" thump. A little random detune per shot stops
+   * sustained fire from sounding like a single looped buzz.
+   */
+  playGunshot() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const detune = 0.92 + Math.random() * 0.16;
+
+    // Report — filtered noise burst, very short.
+    const src = ctx.createBufferSource();
+    src.buffer = this.createNoiseBuffer(0.06);
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 1800 * detune;
+    bp.Q.value = 0.8;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 600;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.5, t);
+    env.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+    src.connect(hp).connect(bp).connect(env).connect(this.master!);
+    src.start(t);
+
+    // Body — quick pitched snap so each round has weight.
+    const osc = ctx.createOscillator();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(220 * detune, t);
+    osc.frequency.exponentialRampToValueAtTime(70, t + 0.05);
+    const oenv = ctx.createGain();
+    oenv.gain.setValueAtTime(0.35, t);
+    oenv.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+    osc.connect(oenv).connect(this.master!);
+    osc.start(t);
+    osc.stop(t + 0.07);
+  }
+
+  /** Bullet impact tick — bright metallic ping for drones, duller for bodies. */
+  playImpact(kind: 'metal' | 'body') {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.createNoiseBuffer(0.04);
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = kind === 'metal' ? 3200 : 520;
+    bp.Q.value = kind === 'metal' ? 4 : 1.2;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(kind === 'metal' ? 0.3 : 0.4, t);
+    env.gain.exponentialRampToValueAtTime(0.001, t + (kind === 'metal' ? 0.06 : 0.09));
+    src.connect(bp).connect(env).connect(this.master!);
+    src.start(t);
+  }
+
+  /** Enemy destruction — a noise burst sweeping down over a low boom. */
+  playKill() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+
+    const src = ctx.createBufferSource();
+    src.buffer = this.createNoiseBuffer(0.3);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(3500, t);
+    lp.frequency.exponentialRampToValueAtTime(300, t + 0.28);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.5, t);
+    env.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    src.connect(lp).connect(env).connect(this.master!);
+    src.start(t);
+
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(110, t);
+    osc.frequency.exponentialRampToValueAtTime(38, t + 0.25);
+    const oenv = ctx.createGain();
+    oenv.gain.setValueAtTime(0.45, t);
+    oenv.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    osc.connect(oenv).connect(this.master!);
+    osc.start(t);
+    osc.stop(t + 0.32);
+  }
+
+  /** Cole takes damage — a short distorted descending tone. */
+  playHurt() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(300, t);
+    osc.frequency.exponentialRampToValueAtTime(90, t + 0.18);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(0.3, t + 0.01);
+    env.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    osc.connect(env).connect(this.master!);
+    osc.start(t);
+    osc.stop(t + 0.22);
+  }
+
   /* ── Per-frame update ──────────────────────────────────────────────── */
 
   /** Called each frame. `walking` should be true when the player is moving. */

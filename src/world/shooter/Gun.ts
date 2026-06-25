@@ -45,6 +45,7 @@ export class Gun {
   private readonly flash: THREE.Mesh;
   private readonly flashMat: THREE.MeshBasicMaterial;
   private flashTimer = 0;
+  private recoil = 0; // current recoil push-back, world units, decays to 0
 
   constructor() {
     const mat = new THREE.MeshBasicMaterial({
@@ -84,17 +85,20 @@ export class Gun {
    * Returns the world-space barrel tip so the caller can spawn bullets/flash.
    */
   aim(hx: number, hy: number, angle: number): Muzzle {
-    this.pistol.position.set(hx, hy, 0.04);
+    // Recoil shoves the whole gun back along -aim, easing forward again.
+    const rx = hx - Math.cos(angle) * this.recoil;
+    const ry = hy - Math.sin(angle) * this.recoil;
+    this.pistol.position.set(rx, ry, 0.04);
     this.pistol.rotation.z = angle;
     const aimingLeft = Math.abs(angle) > Math.PI / 2;
     this.pistol.scale.y = aimingLeft ? -1 : 1;
     return {
-      x: hx + Math.cos(angle) * MUZZLE_REACH,
-      y: hy + Math.sin(angle) * MUZZLE_REACH,
+      x: rx + Math.cos(angle) * MUZZLE_REACH,
+      y: ry + Math.sin(angle) * MUZZLE_REACH,
     };
   }
 
-  /** Blinks the muzzle flash at (mx, my). */
+  /** Blinks the muzzle flash at (mx, my) and kicks the gun back. */
   fireFlash(mx: number, my: number) {
     this.flash.position.set(mx, my, 0.05);
     this.flash.rotation.z = Math.random() * Math.PI;
@@ -102,6 +106,7 @@ export class Gun {
     this.flashTimer = 0.05;
     this.flashMat.opacity = 1;
     this.flash.visible = true;
+    this.recoil = Math.min(0.16, this.recoil + 0.09);
   }
 
   update(dt: number) {
@@ -110,5 +115,7 @@ export class Gun {
       this.flashMat.opacity = Math.max(0, this.flashTimer / 0.05);
       if (this.flashTimer <= 0) this.flash.visible = false;
     }
+    // Ease the recoil back to rest.
+    if (this.recoil > 0) this.recoil = Math.max(0, this.recoil - dt * 1.1);
   }
 }

@@ -370,3 +370,20 @@ canvas {
   opacity: 0;
   transition: opacity 0.1s linear;
 }
+
+#shooter-hud .sh-floaters {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+#shooter-hud .sh-float {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(0, 0);
+  font-family: ui-monospace, 'JetBrains Mono', Menlo, monospace;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  will-change: transform, opacity;
+}
