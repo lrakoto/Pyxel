@@ -6,7 +6,8 @@ export interface InteractionDef {
   lines: string[];
 }
 
-const INTERACTIONS: InteractionDef[] = [
+/** Sector 7 street interactions — exported so sector7.ts can attach them to the area. */
+export const SECTOR7_INTERACTIONS: InteractionDef[] = [
   {
     x: -15.5, z: -8.2, radius: 3,
     label: 'NO/BODY sign',
@@ -109,6 +110,7 @@ const INTERACTIONS: InteractionDef[] = [
 ];
 
 export class DialogueManager {
+  private interactions: InteractionDef[] = [];
   private interactIndex = -1;
   private open = false;
   private lineIndex = 0;
@@ -131,10 +133,16 @@ export class DialogueManager {
     this.close();
   }
 
+  /** Swap the active interaction set — called on area transition. */
+  setInteractions(defs: InteractionDef[]) {
+    if (this.open) this.close();
+    this.interactions = defs;
+  }
+
   /** Returns the nearest interaction within range, or null. */
   findNearby(playerX: number): InteractionDef | null {
     let best: { def: InteractionDef; dist: number } | null = null;
-    for (const def of INTERACTIONS) {
+    for (const def of this.interactions) {
       const dx = def.x - playerX;
       const dist = Math.abs(dx);
       if (dist < def.radius && (!best || dist < best.dist)) {
@@ -150,7 +158,7 @@ export class DialogueManager {
 
   /** Start a dialogue session with the given interaction. */
   openDialogue(def: InteractionDef) {
-    const idx = INTERACTIONS.indexOf(def);
+    const idx = this.interactions.indexOf(def);
     this.interactIndex = idx;
     this.open = true;
     this.lineIndex = 0;
@@ -174,7 +182,7 @@ export class DialogueManager {
   /** Advance to the next line, or close if on the last line. */
   advance(): boolean {
     if (!this.open) return false;
-    const def = INTERACTIONS[this.interactIndex];
+    const def = this.interactions[this.interactIndex];
     if (!def) { this.close(); return false; }
 
     // If still typing, finish the current line instantly
@@ -202,7 +210,7 @@ export class DialogueManager {
   /** Called each frame to drive the typewriter effect. */
   update(dt: number) {
     if (!this.open) return;
-    const def = INTERACTIONS[this.interactIndex];
+    const def = this.interactions[this.interactIndex];
     if (!def) return;
     const line = def.lines[this.lineIndex];
     if (this.charIndex < line.length) {

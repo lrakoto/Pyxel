@@ -96,6 +96,12 @@ export interface MoveInput {
   right: boolean;
 }
 
+/** Optional bounds override, set by the area on transition. */
+export interface MoveBounds {
+  min: number;
+  max: number;
+}
+
 /**
  * Wet rim glow: a camera-facing sprite has one flat normal, so fresnel can't
  * find its edges. Instead the shader samples the sprite's alpha one texel to
@@ -448,13 +454,27 @@ export class Player {
     return this.scarf.mesh;
   }
 
+  /** Set facing direction (1 = right, -1 = left). Used on area transitions. */
+  setFacing(dir: number) {
+    this.facing = dir;
+    this.mesh.scale.x = dir;
+  }
+
+  /** Bounds for player movement, set by the active area. */
+  private bounds: MoveBounds = { min: -WORLD_BOUND, max: WORLD_BOUND };
+
+  /** Set the movement bounds (called on area transition). */
+  setBounds(min: number, max: number) {
+    this.bounds = { min, max };
+  }
+
   update(dt: number, input: MoveInput) {
     const dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
     const walking = dir !== 0;
 
     if (walking) {
       this.facing = dir;
-      this.x = THREE.MathUtils.clamp(this.x + dir * SPEED * dt, -WORLD_BOUND, WORLD_BOUND);
+      this.x = THREE.MathUtils.clamp(this.x + dir * SPEED * dt, this.bounds.min, this.bounds.max);
       this.animTimer += dt;
       if (this.animTimer > FRAME_TIME) {
         this.animTimer = 0;

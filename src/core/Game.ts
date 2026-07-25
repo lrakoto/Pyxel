@@ -16,7 +16,9 @@ import { Rain } from '../world/Rain';
 import { RainSplash } from '../world/RainSplash';
 import { AudioManager } from './AudioManager';
 import { DialogueManager } from '../world/dialogue';
-import { buildSector7 } from '../world/sector7';
+import { buildSector7Area } from '../world/sector7';
+import { buildStudio } from '../world/studio';
+import type { AreaWorld } from '../world/area';
 import { StateMachine } from './states/StateMachine';
 import { ExploreState } from './states/ExploreState';
 import type { GameContext } from './states/GameContext';
@@ -31,6 +33,21 @@ export class Game {
   private readonly state: StateMachine;
   private audioReady = false;
   private readonly clock = new THREE.Clock();
+
+  /** Area registry — maps area id to its builder function. */
+  private readonly areaBuilders: Record<string, () => AreaWorld> = {
+    sector7: buildSector7Area,
+    studio: buildStudio,
+  };
+
+  /** Currently loaded areas, keyed by id (built on first access). */
+  private readonly areas: Map<string, AreaWorld> = new Map();
+
+  /** Fade overlay element for area transitions. */
+  private readonly fadeEl: HTMLElement;
+
+  /** Whether a fade transition is in progress. */
+  private fading = false;
 
   constructor(container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({
@@ -47,8 +64,9 @@ export class Game {
     const camera = new THREE.PerspectiveCamera(38, VIEW_W / VIEW_H, 0.1, 200);
     camera.position.set(0, 2.4, 16);
 
-    const world = buildSector7();
-    const scene = world.scene;
+    // Build the initial area (Sector 7)
+    const area = this.getOrCreateArea('sector7');
+    const scene = area.scene;
 
     const player = new Player();
     scene.add(player.shadowObject);
@@ -71,8 +89,12 @@ export class Game {
     scene.add(splashes.group);
 
     const dialogue = new DialogueManager();
+    dialogue.setInteractions(area.interactions);
     const audio = new AudioManager();
     const keys = new Set<string>();
+
+    // Set initial player bounds from the area
+    player.setBounds(area.bounds.min, area.bounds.max);
 
     const puddles = new PuddleSystem();
     scene.add(puddles.group);
@@ -125,6 +147,14 @@ export class Game {
     this.composer.addPass(new EffectPass(camera, bloom, chroma, grain, vignette, lensDirt));
     this.composer.setSize(VIEW_W, VIEW_H);
 
+    // Fade overlay
+    this.fadeEl = document.createElement('div');
+    this.fadeEl.id = 'fade-overlay';
+    this.fadeEl.style.cssText =
+      'position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;' +
+      'transition:opacity 0.4s ease;z-index:9999;';
+    document.body.appendChild(this.fadeEl);
+
     // Build the shared game context
     this.ctx = {
       renderer: this.renderer,
@@ -137,13 +167,15 @@ export class Game {
       rainFar,
       splashes,
       puddles,
-      updatables: world.updatables,
-      signLights: world.signLights,
-      world,
+      updatables: area.updatables,
+      signLights: area.signLights,
+      area,
       dialogue,
       audio,
       keys,
       camX: 0,
+      requestAreaTransition: (targetId, spawnX, spawnFacing) =>
+        this.transitionToArea(targetId, spawnX, spawnFacing),
     };
 
     this.state = new StateMachine(this.ctx);
@@ -161,6 +193,99 @@ export class Game {
     this.fitCanvas();
 
     this.renderer.setAnimationLoop(() => this.tick());
+  }
+
+  /** Gets an area from cache, or builds it on first access. */
+  private getOrCreateArea(id: string): AreaWorld {
+    let area = this.areas.get(id);
+    if (!area) {
+      const builder = this.areaBuilders[id];
+      if (!builder) throw new Error(`Unknown area: ${id}`);
+      area = builder();
+      this.areas.set(id, area);
+    }
+    return area;
+  }
+
+  /** Triggers a fade-out → scene swap → fade-in transition. */
+  private transitionToArea(targetId: string, spawnX: number, spawnFacing?: number) {
+    if (this.fading) return;
+    this.fading = true;
+
+    // Fade out
+    this.fadeEl.style.opacity = '1';
+
+    setTimeout(() => {
+      // Swap the scene
+      const newArea = this.getOrCreateArea(targetId);
+      const oldArea = this.ctx.area;
+      const camera = this.ctx.camera;
+      const player = this.ctx.player;
+
+      // Remove player + shared objects from old scene
+      oldArea.scene.remove(player.shadowObject);
+      oldArea.scene.remove(player.mesh);
+      oldArea.scene.remove(player.scarfMesh);
+      oldArea.scene.remove(this.ctx.playerLight);
+      oldArea.scene.remove(this.ctx.rain.object);
+      oldArea.scene.remove(this.ctx.rainFar.object);
+      oldArea.scene.remove(this.ctx.splashes.group);
+      oldArea.scene.remove(this.ctx.puddles.group);
+
+      // Add player + shared objects to new scene
+      newArea.scene.add(player.shadowObject);
+      newArea.scene.add(player.mesh);
+      newArea.scene.add(player.scarfMesh);
+      newArea.scene.add(this.ctx.playerLight);
+
+      if (newArea.exterior) {
+        newArea.scene.add(this.ctx.rain.object);
+        newArea.scene.add(this.ctx.rainFar.object);
+        newArea.scene.add(this.ctx.splashes.group);
+        newArea.scene.add(this.ctx.puddles.group);
+        this.ctx.puddles.markReflectables(newArea.scene);
+      }
+
+      // Reposition player
+      player.x = spawnX;
+      player.setFacing(spawnFacing ?? 1);
+      player.setBounds(newArea.bounds.min, newArea.bounds.max);
+
+      // Update camera
+      this.ctx.camX = spawnX * 0.9;
+      camera.position.x = this.ctx.camX;
+      camera.lookAt(this.ctx.camX, newArea.cameraTarget.y, newArea.cameraTarget.z);
+
+      // Update context
+      this.ctx.area = newArea;
+      this.ctx.scene = newArea.scene;
+      this.ctx.updatables = newArea.updatables;
+      this.ctx.signLights = newArea.signLights;
+      this.ctx.dialogue.setInteractions(newArea.interactions);
+
+      // Update HUD location label
+      const locEl = document.getElementById('location');
+      if (locEl) {
+        locEl.innerHTML = `<span class="accent"></span>${newArea.displayName}`;
+      }
+
+      // Rebuild the RenderPass with the new scene
+      // Dispose old render pass and create a new one at index 0
+      this.composer.passes.forEach((p) => {
+        if (p instanceof RenderPass) {
+          p.dispose();
+        }
+      });
+      this.composer.removePass(this.composer.passes[0]);
+      const newRenderPass = new RenderPass(newArea.scene, camera);
+      this.composer.passes.unshift(newRenderPass);
+
+      // Fade in
+      this.fadeEl.style.opacity = '0';
+      setTimeout(() => {
+        this.fading = false;
+      }, 400);
+    }, 400);
   }
 
   private fitCanvas() {
