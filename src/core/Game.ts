@@ -58,7 +58,7 @@ export class Game {
     });
     this.renderer.setSize(VIEW_W, VIEW_H, false);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.15;
+    this.renderer.toneMappingExposure = 1.05;
     container.appendChild(this.renderer.domElement);
 
     const camera = new THREE.PerspectiveCamera(38, VIEW_W / VIEW_H, 0.1, 200);
@@ -105,18 +105,18 @@ export class Game {
     });
     this.composer.addPass(new RenderPass(scene, camera));
     const bloom = new BloomEffect({
-      intensity: 1.15, luminanceThreshold: 0.15,
-      luminanceSmoothing: 0.3, mipmapBlur: true,
+      intensity: 1.35, luminanceThreshold: 0.18,
+      luminanceSmoothing: 0.25, mipmapBlur: true,
     });
     const chroma = new ChromaticAberrationEffect({
-      offset: new THREE.Vector2(0.0011, 0.0007),
-      radialModulation: true, modulationOffset: 0.25,
+      offset: new THREE.Vector2(0.0014, 0.0009),
+      radialModulation: true, modulationOffset: 0.22,
     });
     const grain = new NoiseEffect({
       blendFunction: BlendFunction.COLOR_DODGE, premultiply: true,
     });
-    grain.blendMode.opacity.value = 0.5;
-    const vignette = new VignetteEffect({ offset: 0.28, darkness: 0.62 });
+    grain.blendMode.opacity.value = 0.42;
+    const vignette = new VignetteEffect({ offset: 0.22, darkness: 0.72 });
 
     const dirtCanvas = document.createElement('canvas');
     dirtCanvas.width = 256;

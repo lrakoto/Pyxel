@@ -27,11 +27,19 @@ canvas {
   image-rendering: pixelated;
 }
 
+/* ── HUD ─────────────────────────────────────────────────────────── */
+
 #hud {
   position: fixed;
   inset: 0;
   pointer-events: none;
   color: #c5d4e6;
+  opacity: 0;
+  animation: hud-fade-in 1.5s ease 3s forwards;
+}
+
+@keyframes hud-fade-in {
+  to { opacity: 1; }
 }
 
 #location {
@@ -51,6 +59,12 @@ canvas {
   background: #36e0ff;
   margin-right: 10px;
   box-shadow: 0 0 10px #36e0ff;
+  animation: accent-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes accent-pulse {
+  0%, 100% { box-shadow: 0 0 6px #36e0ff; opacity: 0.8; }
+  50% { box-shadow: 0 0 14px #36e0ff; opacity: 1; }
 }
 
 #hint {
@@ -59,7 +73,7 @@ canvas {
   right: 26px;
   font-size: 12px;
   letter-spacing: 0.18em;
-  opacity: 0.45;
+  opacity: 0.35;
 }
 
 #interact-hint {
@@ -80,16 +94,24 @@ canvas {
   50% { opacity: 0.9; }
 }
 
+/* ── Dialogue box ────────────────────────────────────────────────── */
+
 #dialogue-box {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
   padding: 16px 28px 22px;
-  background: linear-gradient(180deg, rgba(4, 6, 12, 0.85), rgba(2, 3, 8, 0.95));
+  background: linear-gradient(180deg, rgba(4, 6, 12, 0.85), rgba(2, 3, 8, 0.96));
   border-top: 1px solid rgba(54, 224, 255, 0.15);
   backdrop-filter: blur(4px);
   pointer-events: none;
+  animation: dialogue-in 0.25s ease;
+}
+
+@keyframes dialogue-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 #dialogue-speaker {
@@ -101,6 +123,11 @@ canvas {
   text-transform: uppercase;
 }
 
+#dialogue-speaker::before {
+  content: '> ';
+  color: rgba(54, 224, 255, 0.4);
+}
+
 #dialogue-text {
   font-size: 14px;
   line-height: 1.65;
@@ -108,6 +135,18 @@ canvas {
   max-width: 640px;
   margin: 0 auto;
   min-height: 3.3em;
+}
+
+#dialogue-text::after {
+  content: '\2588';
+  color: #36e0ff;
+  opacity: 0.5;
+  animation: cursor-blink 0.8s steps(2) infinite;
+  margin-left: 2px;
+}
+
+@keyframes cursor-blink {
+  50% { opacity: 0; }
 }
 
 #dialogue-advance {
@@ -240,6 +279,8 @@ canvas {
   to { opacity: 1; letter-spacing: 0.34em; }
 }
 
+/* ── Title screen ────────────────────────────────────────────────── */
+
 #title-card {
   position: fixed;
   inset: 0;
@@ -247,29 +288,140 @@ canvas {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 14px;
   pointer-events: none;
   color: #e8eef7;
-  animation: title-out 1.8s ease 2.8s forwards;
+  z-index: 100;
+  animation: title-out 1.8s ease 4s forwards;
+  background: radial-gradient(ellipse at center, rgba(4, 6, 12, 0.4), rgba(0, 0, 0, 0.8));
 }
 
-#title-card h1 {
+/* Scanline overlay */
+#title-scanlines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px,
+    transparent 2px,
+    rgba(0, 0, 0, 0.12) 2px,
+    rgba(0, 0, 0, 0.12) 3px
+  );
+  opacity: 0.5;
+  animation: scanline-drift 8s linear infinite;
+}
+
+@keyframes scanline-drift {
+  from { background-position: 0 0; }
+  to { background-position: 0 100px; }
+}
+
+/* Glitch title text */
+.title-glitch {
   font-size: clamp(22px, 4.5vw, 44px);
   letter-spacing: 0.32em;
   font-weight: 700;
+  position: relative;
   text-shadow: 0 0 24px rgba(54, 224, 255, 0.4);
+  animation: title-flicker 4s ease-in-out infinite;
 }
 
-#title-card h1 span {
+@keyframes title-flicker {
+  0%, 100% { opacity: 1; text-shadow: 0 0 24px rgba(54, 224, 255, 0.4); }
+  3% { opacity: 0.8; text-shadow: 0 0 8px rgba(54, 224, 255, 0.3); }
+  5% { opacity: 1; text-shadow: 0 0 28px rgba(54, 224, 255, 0.5); }
+  7% { opacity: 0.9; }
+  8% { opacity: 1; }
+}
+
+/* Glitch shadow layers — pseudo-elements using data-text attribute */
+.title-glitch::before,
+.title-glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  letter-spacing: 0.32em;
+  opacity: 0.8;
+}
+
+.title-glitch::before {
+  color: #36e0ff;
+  z-index: -1;
+  animation: glitch-1 2.5s infinite linear alternate-reverse;
+}
+
+.title-glitch::after {
+  color: #ff3da0;
+  z-index: -2;
+  animation: glitch-2 3s infinite linear alternate-reverse;
+}
+
+@keyframes glitch-1 {
+  0%, 100% { transform: translate(0, 0); opacity: 0; }
+  2% { transform: translate(-3px, 0); opacity: 0.6; }
+  4% { transform: translate(2px, 1px); opacity: 0.4; }
+  6% { transform: translate(0, 0); opacity: 0; }
+  50% { transform: translate(0, 0); opacity: 0; }
+  52% { transform: translate(-2px, -1px); opacity: 0.5; }
+  54% { transform: translate(0, 0); opacity: 0; }
+}
+
+@keyframes glitch-2 {
+  0%, 100% { transform: translate(0, 0); opacity: 0; }
+  3% { transform: translate(3px, 0); opacity: 0.5; }
+  5% { transform: translate(-1px, -1px); opacity: 0.3; }
+  7% { transform: translate(0, 0); opacity: 0; }
+  60% { transform: translate(0, 0); opacity: 0; }
+  63% { transform: translate(2px, 1px); opacity: 0.4; }
+  65% { transform: translate(0, 0); opacity: 0; }
+}
+
+/* The "/" that alternates between cyan and magenta */
+.title-slash {
   color: #ff3da0;
   text-shadow: 0 0 18px #ff3da0;
+  animation: slash-shift 3s ease-in-out infinite;
 }
 
-#title-card p {
+@keyframes slash-shift {
+  0%, 100% { color: #ff3da0; text-shadow: 0 0 18px #ff3da0; }
+  33% { color: #36e0ff; text-shadow: 0 0 18px #36e0ff; }
+  66% { color: #b14dff; text-shadow: 0 0 18px #b14dff; }
+}
+
+/* Subtitle — typewriter reveal */
+#title-subtitle {
   font-size: 12px;
   letter-spacing: 0.5em;
   text-transform: uppercase;
-  opacity: 0.5;
+  opacity: 0;
+  animation: subtitle-type 1.5s ease 1.2s forwards;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+@keyframes subtitle-type {
+  from { opacity: 0; letter-spacing: 0.1em; max-width: 0; }
+  to { opacity: 0.55; letter-spacing: 0.5em; max-width: 400px; }
+}
+
+/* Copyright line — fades in last */
+#title-copyright {
+  position: absolute;
+  bottom: 40px;
+  font-size: 10px;
+  letter-spacing: 0.4em;
+  opacity: 0;
+  color: #36e0ff;
+  text-shadow: 0 0 6px rgba(54, 224, 255, 0.3);
+  animation: copyright-in 1s ease 2.5s forwards;
+}
+
+@keyframes copyright-in {
+  to { opacity: 0.4; }
 }
 
 @keyframes title-out {
