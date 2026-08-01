@@ -16,11 +16,16 @@ import { Rain } from '../world/Rain';
 import { RainSplash } from '../world/RainSplash';
 import { AudioManager } from './AudioManager';
 import { DialogueManager } from '../world/dialogue';
+import type { InteractionDef } from '../world/dialogue';
+import { Journal } from './investigation/Journal';
+import { JournalUI } from './investigation/JournalUI';
+import { ClueToast } from './investigation/ClueToast';
 import { buildSector7Area } from '../world/sector7';
 import { buildStudio } from '../world/studio';
 import type { AreaWorld } from '../world/area';
 import { StateMachine } from './states/StateMachine';
 import { ExploreState } from './states/ExploreState';
+import { InvestigateState } from './states/InvestigateState';
 import type { GameContext } from './states/GameContext';
 
 const VIEW_W = 960;
@@ -33,6 +38,7 @@ export class Game {
   private readonly state: StateMachine;
   private audioReady = false;
   private readonly clock = new THREE.Clock();
+  private journalUI!: JournalUI;
 
   /** Area registry — maps area id to its builder function. */
   private readonly areaBuilders: Record<string, () => AreaWorld> = {
@@ -92,6 +98,25 @@ export class Game {
     dialogue.setInteractions(area.interactions);
     const audio = new AudioManager();
     const keys = new Set<string>();
+
+    // Investigation: journal, journal UI, clue toast.
+    const journal = new Journal();
+    const journalUI = new JournalUI(journal);
+    this.journalUI = journalUI;
+    const clueToast = new ClueToast();
+
+    // Line resolution given clue state: conditional insight → repeat → base.
+    const resolveLines = (def: InteractionDef): string[] => {
+      if (def.requiresClue && def.conditionalLines && journal.has(def.requiresClue)) {
+        return def.conditionalLines;
+      }
+      if (def.clueId && def.repeatLines && journal.has(def.clueId)) {
+        return def.repeatLines;
+      }
+      return def.lines;
+    };
+    dialogue.setResolver(resolveLines);
+    journal.onClueAdded = () => { if (journalUI.isOpen) journalUI.show(); };
 
     // Set initial player bounds from the area
     player.setBounds(area.bounds.min, area.bounds.max);
@@ -174,6 +199,10 @@ export class Game {
       audio,
       keys,
       camX: 0,
+      journal,
+      journalUI,
+      clueToast,
+      resolveLines,
       requestAreaTransition: (targetId, spawnX, spawnFacing) =>
         this.transitionToArea(targetId, spawnX, spawnFacing),
     };
@@ -185,6 +214,29 @@ export class Game {
       if (!this.audioReady && !e.repeat) {
         this.audioReady = true;
         this.ctx.audio.init();
+      }
+      // Tab toggles the journal; prevent focus shift.
+      if (e.code === 'Tab') e.preventDefault();
+
+      // Journal toggle: J or Tab (not during battle).
+      if (!e.repeat && (e.code === 'KeyJ' || e.code === 'Tab')) {
+        if (this.state.currentState?.name !== 'battle') {
+          journalUI.toggle();
+        }
+        return;
+      }
+      // Escape closes the journal if it's open.
+      if (!e.repeat && e.code === 'Escape' && journalUI.isOpen) {
+        journalUI.hide();
+        return;
+      }
+      // While the journal is open the world is paused; ignore other input.
+      if (journalUI.isOpen) return;
+
+      // I enters investigation mode (from exploration only).
+      if (!e.repeat && e.code === 'KeyI' && this.state.currentState?.name === 'explore') {
+        this.state.transition(new InvestigateState());
+        return;
       }
       this.ctx.keys.add(e.code);
     });
@@ -297,7 +349,10 @@ export class Game {
 
   private tick() {
     const dt = Math.min(this.clock.getDelta(), 0.05);
-    this.state.update(dt);
+    // The journal overlay pauses the world (but rendering continues).
+    if (!this.journalUI?.isOpen) {
+      this.state.update(dt);
+    }
     this.composer.render(dt);
   }
 }

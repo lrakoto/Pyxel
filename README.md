@@ -25,7 +25,20 @@ npm run dev      # dev server
 npm run build    # typecheck + production build
 ```
 
-Controls: ←/→ or A/D to walk, E to examine/enter/advance dialogue.
+Controls:
+
+| Key | Action |
+|-----|--------|
+| ←/→ or A/D | Walk |
+| E | Investigate / examine / advance dialogue |
+| I or Esc | Exit investigation mode |
+| Click/tap a glint | Walk there; examination fires automatically on arrival |
+| Click/tap the ground | Walk there (investigation mode) |
+| [ / ] | Cycle focus between glints (investigation mode) |
+| Space | Advance dialogue / dismiss battle stub |
+| J or Tab | Case journal (pauses the game) |
+| B | Dev trigger — enter battle stub |
+| Enter | Dismiss battle stub |
 
 ## Structure
 
@@ -33,12 +46,14 @@ Controls: ←/→ or A/D to walk, E to examine/enter/advance dialogue.
 src/
   main.ts               entry point
   core/Game.ts          renderer, camera, post-processing, game loop, area registry + transitions
-  core/states/          state machine (Explore ↔ Battle), area transition system
+  core/states/          state machine (Explore ↔ Investigate ↔ Battle), area transition system
+  core/investigation/   clue model, case journal store, journal overlay UI, evidence toast
   world/sector7.ts      Sector 7 street scene (exterior area)
   world/studio.ts       Marlon Graves' studio (interior crime scene area)
   world/area.ts         AreaWorld/DoorDef interfaces for area transitions
+  world/glint.ts        pulsing sparkle marking examinables in investigation mode
   world/Player.ts       Cole placeholder sprite + movement/animation/scarf
-  world/dialogue.ts     DialogueManager with dynamic per-area interaction sets
+  world/dialogue.ts     DialogueManager with dynamic per-area interaction sets + clue-conditional lines
   world/pixelTextures.ts  procedural placeholder textures
 docs/
   STORY_BIBLE.md        canonical narrative design document
@@ -53,7 +68,7 @@ docs/
 4. ✅ Dialogue and investigation systems (14 street + 9 studio interactables, typewriter text)
 5. ✅ Area expansion (Sector 7 street ↔ Marlon's studio interior)
 6. 🚧 Visual polish (cinematic title, HUD, post-processing, studio textures — done; more to come)
-7. ⬜ Investigation gameplay layer (clues, inventory, case journal, conditional dialogue)
+7. 🚧 Investigation gameplay layer — done: glint-marked investigation mode (E near an object or I to enter), evidence clues with journal (J/Tab), clue-conditional re-examination. Next: usable items, NPC-driven dialogue trees
 8. ⬜ NPCs and character dialogue (Lyra, Marlon, the Broker)
 9. ⬜ Real sprite art pipeline (Aseprite sheets + normal maps for sprite lighting)
 10. ⬜ Audio for interiors (ambient hum, muffled rain, neural device pulse)
@@ -61,6 +76,7 @@ docs/
 
 ## Recent additions
 
+- **Investigation mode + case journal** — press I (or E near an object) to enter investigation: examinables pulse with cyan glints, walk or click between them, E to examine. Objects grant evidence clues (toast notification + journal entry); the journal overlay (J/Tab) pauses the game with a case-file layout (current objective + collected evidence). Objects respond differently once you hold related clues — 8 clues and 5 conditional reveals wired into the studio scene.
 - **Area transition system** — fade-out/swap-scene/fade-in between exterior and interior areas. Door prompts, dynamic interaction sets, player repositioning, bounds per area.
 - **Marlon's studio** — the crime scene interior: cracked concrete walls with exposed brick, paint-splattered tile floor, the "Everybody/Nobody" painting (50 fragmented faces, neural traces), unfinished canvases on easels, neural interface device, chalk body outline with iridescent residue, wall writing, flickering bare bulb, ceiling pipes.
 - **Cinematic title screen** — glitch effect with cyan/magenta chromatic split, drifting scanlines, animated subtitle, cycling "/" colors.

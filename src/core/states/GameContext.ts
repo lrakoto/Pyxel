@@ -8,6 +8,10 @@ import type { AudioManager } from '../AudioManager';
 import type { DialogueManager } from '../../world/dialogue';
 import type { Updatable } from '../../world/sector7';
 import type { AreaWorld } from '../../world/area';
+import type { InteractionDef } from '../../world/dialogue';
+import type { Journal } from '../investigation/Journal';
+import type { JournalUI } from '../investigation/JournalUI';
+import type { ClueToast } from '../investigation/ClueToast';
 
 export interface GameContext {
   renderer: THREE.WebGLRenderer;
@@ -31,6 +35,14 @@ export interface GameContext {
   audio: AudioManager;
   keys: Set<string>;
   camX: number;
+  /** Cole's case journal — collected clues + current objective. */
+  journal: Journal;
+  /** Journal overlay UI — checked so states can ignore clicks while it's open. */
+  journalUI: JournalUI;
+  /** Transient "evidence added" notification. */
+  clueToast: ClueToast;
+  /** Resolve the correct line set for an interaction given clue state. */
+  resolveLines: (def: InteractionDef) => string[];
   /** Request a transition to a new area. Called by ExploreState on door entry. */
   requestAreaTransition: (targetId: string, spawnX: number, spawnFacing?: number) => void;
 }

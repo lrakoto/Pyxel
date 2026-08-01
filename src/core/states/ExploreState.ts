@@ -1,6 +1,7 @@
 import { GameState } from './StateMachine';
 import type { GameContext } from './GameContext';
 import { BattleState } from './BattleState';
+import { InvestigateState } from './InvestigateState';
 import type { DoorDef } from '../../world/area';
 
 export class ExploreState extends GameState {
@@ -61,8 +62,10 @@ export class ExploreState extends GameState {
         hintEl.style.display = 'block';
         if (keys.has('KeyE')) {
           keys.delete('KeyE');
-          dialogue.openDialogue(nearby);
           hintEl.style.display = 'none';
+          // All examination happens in investigation mode, where glints mark
+          // examinables and objects can grant evidence.
+          return new InvestigateState();
         }
       } else {
         hintEl.style.display = 'none';

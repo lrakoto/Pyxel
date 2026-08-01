@@ -1,10 +1,13 @@
 # Working context — EVERYBODY/NOBODY
 
-## Project state (July 2026)
+## Project state (August 2026)
 
 A cyberpunk noir turn-based RPG with a pixel-in-3D (REPLACED-style) visual pipeline.
 Walking prototype of Sector 7 street with investigation dialogue, procedural audio,
 a state machine, an area transition system, and one enterable interior (Marlon's studio).
+
+The investigation layer now exists: glint-marked investigation mode, evidence clues,
+a case journal overlay, and clue-conditional re-examination.
 
 The CTB battle system exists but is being converted to a real-time side-scrolling shooter.
 That work is in progress on a separate PC and has NOT been pushed to this repo.
@@ -14,8 +17,13 @@ That work is in progress on a separate PC and has NOT been pushed to this repo.
 | Key | Action |
 |-----|--------|
 | ← → / A D | Walk |
-| E | Examine nearby object / advance dialogue / enter doorway |
+| E | Enter investigation mode (near object) / examine / enter doorway / advance dialogue |
+| I / Esc | Exit investigation mode |
 | Space | Advance dialogue (when open) / dismiss battle stub |
+| J / Tab | Case journal overlay (pauses game) |
+| Click/tap glint | Walk to + auto-examine on arrival (investigation mode) |
+| Click/tap ground | Walk there (investigation mode) |
+| [ / ] | Cycle focus between glints (investigation mode) |
 | B | Dev trigger — enter battle stub |
 | Enter | Dismiss battle stub |
 
@@ -30,8 +38,14 @@ src/
     states/
       GameContext.ts — interface for all shared objects + requestAreaTransition callback
       StateMachine.ts — generic state machine with enter/exit/update lifecycle
-      ExploreState.ts — exploration (player movement, rain, dialogue, puddles, door prompts, area transitions)
+      ExploreState.ts — exploration (player movement, rain, dialogue, puddles, door prompts, area transitions, E → investigation mode)
+      InvestigateState.ts — investigation mode: pulsing glints on examinables, click/tap-to-walk selection, clue grant on examine, camera pull-in
       BattleState.ts — CTB battle state (being replaced by shooter on another branch)
+    investigation/
+      Clue.ts — ClueDef (id, title, journal body)
+      Journal.ts — collected clues + case objective that evolves on key clues
+      JournalUI.ts — full-screen case-file overlay (J/Tab/Esc, pauses world)
+      ClueToast.ts — transient "EVIDENCE ADDED" notification
     battle/
       Battle.ts — CTB engine: turn meters, queue, attack/skill/defend, enemy AI
       BattleUI.ts — HTML/CSS battle overlay: portraits, HP bars, turn order, command menu, action log
@@ -40,7 +54,8 @@ src/
     sector7.ts — Sector 7 street: buildings, signs, lights, fog, props, sparkles, pedestrians. buildSector7Area() returns AreaWorld
     studio.ts — Marlon Graves' studio interior: crime scene with walls, floor, Everybody/Nobody painting, easels, neural device, body outline, wall writing. 9 interactables.
     Player.ts — detective Cole: sprite, verlet scarf, wet-rim shader, sunglass reflections, setFacing()/setBounds() for area transitions
-    dialogue.ts — DialogueManager with dynamic interaction sets (setInteractions for area swapping)
+    dialogue.ts — DialogueManager with dynamic interaction sets (setInteractions for area swapping) + clue-conditional line resolution
+    glint.ts — pulsing additive sparkle marking examinables in investigation mode
     Rain.ts — additive line-segment rain streaks (near + far layers)
     RainSplash.ts — ground splash particles cycling near the camera
     puddles.ts — planar mirror puddle system with chromatic edge shift
@@ -88,15 +103,30 @@ line fades in last. Title stays 4s then fades out. HUD fades in at 3s.
 
 ## Recent work (this session)
 
-1. **Area system + Marlon's studio** — built AreaWorld/DoorDef interfaces, refactored
+1. **Investigation gameplay layer** — new `InvestigateState`: press I (or E near an
+   object) to enter investigation mode; examinables pulse with additive cyan glints;
+   walk or click/tap to move between them; E examines. Examining grants evidence
+   clues (journal entry + "EVIDENCE ADDED" toast) via the new `core/investigation`
+   module (Clue, Journal, JournalUI, ClueToast). Journal overlay (J/Tab) pauses the
+   world with a case-file layout: evolving objective + collected evidence. Interactions
+   now support `clueId`/`clueTitle`/`clueBody`, `repeatLines` (re-examines), and
+   `requiresClue`/`conditionalLines` (insight that appears once related evidence is
+   held). 8 clues + 5 conditional reveals wired into the studio (painting↔wall-writing,
+   device↔wall-writing, body↔device, canvases↔unfinished-woman, wall-writing↔residue).
+   Investigation-mode polish: click-to-walk ground picking, hover cursor/pulse feedback,
+   auto-examine on arrival, ambient audio duck, radial examine vignette, [/] glint
+   cycling, discovery chime (staggered 660→990 Hz pings as new glints enter view),
+   and a studio case conclusion beat (all 7 clues → scene closed, objective resolves,
+   door interaction re-writes itself).
+2. **Area system + Marlon's studio** — built AreaWorld/DoorDef interfaces, refactored
    sector7 and dialogue to support area swapping, built the studio interior (crime scene
    with 9 interactables, procedural textures, flickering light, body outline, the
    Everybody/Nobody painting, neural device, wall writing, easels, workbench, pipes).
-2. **Studio visual polish** — 4x detail on the Everybody/Nobody painting (50 fragmented
+3. **Studio visual polish** — 4x detail on the Everybody/Nobody painting (50 fragmented
    faces, neural traces, convergence point), paint-splattered floor, exposed brick walls
    with conduit and baseboards, hanging bare bulb, paint tubes, ceiling beams + pipes,
    stronger iridescent residue, actual rendered wall writing text, painting frame.
-3. **Overall visual polish** — cinematic title screen (glitch, scanlines, animated
+4. **Overall visual polish** — cinematic title screen (glitch, scanlines, animated
    subtitle), HUD fade-in + pulsing accent, dialogue box slide-up + typewriter cursor +
    speaker prefix, post-processing mood pass (tighter bloom, deeper vignette, darker
    exposure, stronger CA).
@@ -108,15 +138,17 @@ The area system is generic. Adding the Memory Den, the Hotel, or any other enter
 building is just a new `build___Area()` function + a door in Sector 7. The story bible
 names several key locations.
 
-### 2. Investigation gameplay layer
-Interactions are flavor text only. Needs: clue/inventory system (items picked up from
-examining objects), case journal (tracks what Cole has found), conditional dialogue
-(objects/NPCs that respond differently once you have certain clues). The studio's 9
-interactions are already written as investigation beats — they need to DO something.
+### 2. Investigation — Lyra & beyond the studio
+The clue + journal layer is in, including the studio case conclusion (all 7 scene
+clues found → objective resolves to "take what you have to Lyra," door interaction
+gets a closing beat, `studio-case-complete` flag in the journal). What remains for
+this line: Lyra herself (an NPC gated on that flag), and street-level clues in
+Sector 7 so investigation mode is meaningful outside too.
 
 ### 3. NPCs and character dialogue
 Lyra is the most important character after Cole. She could appear in the studio or on
-the street, with a proper dialogue tree (not just examination text).
+the street, with a proper dialogue tree (not just examination text). The journal's
+`requiresClue` pattern is the hook: gate Lyra's dialogue beats on collected evidence.
 
 ### 4. Real sprite art pipeline (roadmap item #5)
 All current art is procedural placeholder. The pipeline supports real sprite sheets via
