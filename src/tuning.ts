@@ -20,10 +20,10 @@ export const TUNING = {
   scarfStiffness: 14,
   scarfGlow: 2,
   footstepInterval: 0.46,
-  footstepVolume: 2.05,
+  footstepVolume: 1,
   footstepClack: 3,
-  footstepPing: 0.45,
-  footstepKnock: 2,
+  footstepPing: 0,
+  footstepKnock: 0.25,
   footstepTone: 800,
 };
 
