@@ -3,10 +3,33 @@ export interface InteractionDef {
   z: number;
   radius: number;
   label: string;
+  /** Lines shown when examined without any special clue state. */
   lines: string[];
+  /**
+   * Optional clue granted the first time this object is examined in
+   * investigation mode. Once granted, examining again shows `repeatLines`
+   * (if present) or the base `lines`.
+   */
+  clueId?: string;
+  clueTitle?: string;
+  clueBody?: string;
+  /** Lines shown on re-examination after `clueId` has been collected. */
+  repeatLines?: string[];
+  /**
+   * Conditional insight: shown instead of `lines` when Cole already holds
+   * the clue `requiresClue`. Lets objects respond to case progress.
+   */
+  requiresClue?: string;
+  conditionalLines?: string[];
+  /**
+   * Height above ground (world y) where the investigation glint floats.
+   * Defaults to a chest-height marker if unset.
+   */
+  glintY?: number;
 }
 
-const INTERACTIONS: InteractionDef[] = [
+/** Sector 7 street interactions — exported so sector7.ts can attach them to the area. */
+export const SECTOR7_INTERACTIONS: InteractionDef[] = [
   {
     x: -15.5, z: -8.2, radius: 3,
     label: 'NO/BODY sign',
@@ -109,12 +132,27 @@ const INTERACTIONS: InteractionDef[] = [
 ];
 
 export class DialogueManager {
+  private interactions: InteractionDef[] = [];
   private interactIndex = -1;
   private open = false;
   private lineIndex = 0;
   private charIndex = 0;
   private charTimer = 0;
   private typed = '';
+  /** Lines resolved for the currently open interaction. */
+  private activeLines: string[] = [];
+
+  /**
+   * Resolve which of an interaction's line sets applies, given clue state.
+   * `hasClue` is provided by the game (backed by the journal). Priority:
+   * conditional insight → repeat-after-clue → base lines.
+   */
+  private resolver: ((def: InteractionDef) => string[]) | null = null;
+
+  /** Register the line resolver (called once at startup). */
+  setResolver(fn: (def: InteractionDef) => string[]) {
+    this.resolver = fn;
+  }
 
   private readonly hintEl: HTMLElement;
   private readonly boxEl: HTMLElement;
@@ -131,10 +169,16 @@ export class DialogueManager {
     this.close();
   }
 
+  /** Swap the active interaction set — called on area transition. */
+  setInteractions(defs: InteractionDef[]) {
+    if (this.open) this.close();
+    this.interactions = defs;
+  }
+
   /** Returns the nearest interaction within range, or null. */
   findNearby(playerX: number): InteractionDef | null {
     let best: { def: InteractionDef; dist: number } | null = null;
-    for (const def of INTERACTIONS) {
+    for (const def of this.interactions) {
       const dx = def.x - playerX;
       const dist = Math.abs(dx);
       if (dist < def.radius && (!best || dist < best.dist)) {
@@ -150,17 +194,23 @@ export class DialogueManager {
 
   /** Start a dialogue session with the given interaction. */
   openDialogue(def: InteractionDef) {
-    const idx = INTERACTIONS.indexOf(def);
+    const idx = this.interactions.indexOf(def);
     this.interactIndex = idx;
     this.open = true;
     this.lineIndex = 0;
     this.charIndex = 0;
     this.typed = '';
+    this.activeLines = this.resolver ? this.resolver(def) : def.lines;
     this.hintEl.style.display = 'none';
     this.boxEl.style.display = 'block';
     this.speakerEl.textContent = def.label;
     this.advanceEl.style.display = 'none';
     this.textEl.textContent = '';
+  }
+
+  /** The interaction currently open, or null. */
+  get current(): InteractionDef | null {
+    return this.open && this.interactIndex >= 0 ? this.interactions[this.interactIndex] : null;
   }
 
   /** Close the dialogue and restore the hint. */
@@ -174,12 +224,11 @@ export class DialogueManager {
   /** Advance to the next line, or close if on the last line. */
   advance(): boolean {
     if (!this.open) return false;
-    const def = INTERACTIONS[this.interactIndex];
-    if (!def) { this.close(); return false; }
+    if (this.interactIndex < 0) { this.close(); return false; }
 
     // If still typing, finish the current line instantly
-    if (this.charIndex < def.lines[this.lineIndex].length) {
-      this.typed = def.lines[this.lineIndex];
+    if (this.charIndex < this.activeLines[this.lineIndex].length) {
+      this.typed = this.activeLines[this.lineIndex];
       this.charIndex = this.typed.length;
       this.textEl.textContent = this.typed;
       this.advanceEl.style.display = 'block';
@@ -188,7 +237,7 @@ export class DialogueManager {
 
     // Move to next line
     this.lineIndex++;
-    if (this.lineIndex >= def.lines.length) {
+    if (this.lineIndex >= this.activeLines.length) {
       this.close();
       return true;
     }
@@ -202,12 +251,11 @@ export class DialogueManager {
   /** Called each frame to drive the typewriter effect. */
   update(dt: number) {
     if (!this.open) return;
-    const def = INTERACTIONS[this.interactIndex];
-    if (!def) return;
-    const line = def.lines[this.lineIndex];
+    if (this.interactIndex < 0) return;
+    const line = this.activeLines[this.lineIndex];
     if (this.charIndex < line.length) {
       this.charTimer += dt;
-      // ~40 chars per second
+      // ~45 chars per second
       const charsToAdd = Math.floor(this.charTimer * 45);
       if (charsToAdd > 0) {
         this.charIndex = Math.min(this.charIndex + charsToAdd, line.length);

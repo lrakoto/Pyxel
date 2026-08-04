@@ -132,6 +132,54 @@ export class AudioManager {
     }
   }
 
+  /* ── Discovery chime ─────────────────────────────────────────────── */
+
+  /** Soft two-note synth ping when a new glint catches Cole's eye. */
+  playDiscovery() {
+    if (!this.ctx || !this.master) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    // A tiny rising fifth — quiet, glassy, unobtrusive under the ambient mix.
+    for (const [i, freq] of [660, 990].entries()) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const g = ctx.createGain();
+      const t0 = t + i * 0.09;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.055, t0 + 0.025);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.55);
+      // A little shimmer: fast, shallow vibrato.
+      const vib = ctx.createOscillator();
+      vib.frequency.value = 6;
+      const vibG = ctx.createGain();
+      vibG.gain.value = 2.5;
+      vib.connect(vibG).connect(osc.frequency);
+      vib.start(t0);
+      vib.stop(t0 + 0.6);
+      osc.connect(g).connect(this.master);
+      osc.start(t0);
+      osc.stop(t0 + 0.6);
+    }
+  }
+
+  /* ── Investigation duck ──────────────────────────────────────────── */
+  private ducked = false;
+
+  /** Duck the whole mix while investigating (the world "leans in"). */
+  duck() {
+    if (!this.ctx || !this.master || this.ducked) return;
+    this.ducked = true;
+    this.master.gain.setTargetAtTime(0.28, this.ctx.currentTime, 0.35);
+  }
+
+  /** Restore full ambience. */
+  unduck() {
+    if (!this.ctx || !this.master || !this.ducked) return;
+    this.ducked = false;
+    this.master.gain.setTargetAtTime(0.5, this.ctx.currentTime, 0.45);
+  }
+
   /* ── Footstep ──────────────────────────────────────────────────────── */
 
   private playFootstep() {

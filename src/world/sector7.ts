@@ -16,6 +16,8 @@ import { buildPedestrians } from './pedestrians';
 import { buildStreetProps, Sparkles } from './props';
 import { TUNING } from '../tuning';
 import { createTuningPanel } from '../debug/tuningPanel';
+import type { AreaWorld, DoorDef } from './area';
+import { SECTOR7_INTERACTIONS } from './dialogue';
 
 export interface Updatable {
   update(dt: number): void;
@@ -187,6 +189,18 @@ export interface Sector7World {
    *  specular sparkles need it to aim their reflections. */
   viewPoint: THREE.Vector3;
 }
+
+/** Doors in Sector 7 that lead to interiors. */
+const SECTOR7_DOORS: DoorDef[] = [
+  {
+    // Marlon's studio — entered from the alley near the NO/BODY sign
+    x: -15.5, z: -6.5, radius: 2.5,
+    label: 'Enter the studio',
+    target: 'studio',
+    spawnX: 0,
+    spawnFacing: 1,
+  },
+];
 
 export function buildSector7(): Sector7World {
   const scene = new THREE.Scene();
@@ -448,4 +462,23 @@ export function buildSector7(): Sector7World {
   }
 
   return { scene, updatables, signLights, viewPoint };
+}
+
+/** Builds Sector 7 as a full AreaWorld with doors and interactions. */
+export function buildSector7Area(): AreaWorld {
+  const base = buildSector7();
+  return {
+    id: 'sector7',
+    displayName: 'NEW ANGELES — SECTOR 7',
+    scene: base.scene,
+    updatables: base.updatables,
+    signLights: base.signLights,
+    viewPoint: base.viewPoint,
+    doors: SECTOR7_DOORS,
+    interactions: SECTOR7_INTERACTIONS,
+    exterior: true,
+    ambient: { color: '#1e2a44', intensity: 0.45 },
+    bounds: { min: -16, max: 16 },
+    cameraTarget: { y: 2.0, z: 0 },
+  };
 }

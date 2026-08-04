@@ -82,7 +82,7 @@ export class BattleState extends GameState {
     ctx.camera.fov += (this.fovTarget - ctx.camera.fov) * k;
     ctx.camera.updateProjectionMatrix();
     ctx.camera.lookAt(this.camTarget.x, 1.7, 0);
-    ctx.world.viewPoint.copy(ctx.camera.position);
+    ctx.area.viewPoint.copy(ctx.camera.position);
     ctx.puddles.update(ctx.camera, dt);
     ctx.puddles.render(ctx.renderer, ctx.scene);
 

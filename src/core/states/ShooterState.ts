@@ -120,7 +120,7 @@ export class ShooterState extends GameState {
   }
 
   update(ctx: GameContext, dt: number): GameState | null {
-    const { player, playerLight, signLights, rain, rainFar, splashes, updatables, world, camera, audio, keys, puddles, renderer, scene } = ctx;
+    const { player, playerLight, signLights, rain, rainFar, splashes, updatables, area, camera, audio, keys, puddles, renderer, scene } = ctx;
 
     // Exit back to exploration.
     if (keys.has('Escape') || keys.has('KeyQ')) {
@@ -156,7 +156,7 @@ export class ShooterState extends GameState {
     camera.position.set(ctx.camX + sx, 2.4 + sy, 16);
     camera.lookAt(ctx.camX, 2.0, 0);
     camera.updateMatrixWorld();
-    world.viewPoint.copy(camera.position);
+    area.viewPoint.copy(camera.position);
 
     // --- Aim: unproject cursor onto the z=0 plane ---
     const aim = this.cursorWorld(camera);
