@@ -25,6 +25,13 @@ export const TUNING = {
   footstepPing: 0,
   footstepKnock: 0.25,
   footstepTone: 800,
+  // Ambience bed levels. The exterior bed (rain/hum/drone) and the interior
+  // bed (building hum / muffled rain / neural pulse) crossfade via setExterior.
+  ambienceExterior: 1,
+  ambienceInterior: 1,
+  interiorMuffledRain: 0.7,
+  interiorBuildingHum: 0.55,
+  neuralPulse: 0.6,
 };
 
 export type TuningKey = keyof typeof TUNING;

@@ -50,6 +50,8 @@ export class InvestigateState extends GameState {
 
     const scene = ctx.scene;
     for (const def of ctx.area.interactions) {
+      // Gated interactions (Lyra before the case closes) don't get glints.
+      if (!ctx.dialogue.isAvailable(def)) continue;
       const glint = new Glint(def.clueId && ctx.journal.has(def.clueId) ? 0.16 : 0.24);
       const y = def.glintY ?? 1.6;
       glint.show(def.x, y, def.z);

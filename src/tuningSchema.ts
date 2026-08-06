@@ -34,4 +34,9 @@ export const TUNING_SCHEMA: TuningParam[] = [
   { key: 'footstepPing', label: 'Tok', min: 0, max: 2, step: 0.05, group: 'Footsteps' },
   { key: 'footstepKnock', label: 'Knock', min: 0, max: 2, step: 0.05, group: 'Footsteps' },
   { key: 'footstepTone', label: 'Tone (Hz)', min: 800, max: 5000, step: 100, group: 'Footsteps' },
+  { key: 'ambienceExterior', label: 'Exterior bed', min: 0, max: 1.5, step: 0.05, group: 'Ambience' },
+  { key: 'ambienceInterior', label: 'Interior bed', min: 0, max: 1.5, step: 0.05, group: 'Ambience' },
+  { key: 'interiorMuffledRain', label: 'Muffled rain', min: 0, max: 1.5, step: 0.05, group: 'Ambience' },
+  { key: 'interiorBuildingHum', label: 'Building hum', min: 0, max: 1.5, step: 0.05, group: 'Ambience' },
+  { key: 'neuralPulse', label: 'Neural pulse', min: 0, max: 1.5, step: 0.05, group: 'Ambience' },
 ];

@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import { TUNING } from '../tuning';
-import { canvasTexture, spriteTexture } from './pixelTextures';
+import { canvasTexture } from './pixelTextures';
 import type { Updatable } from './sector7';
+import { loadSheet, hasSheet } from '../sprites/SpriteLibrary';
+import { SpriteAnimator } from '../sprites/SpriteAnimator';
+import { PED_W, PED_H, makePedFrames } from './sprites';
 
 /** Small half-circle umbrella texture for a subset of pedestrians. */
 function umbrellaTexture(): THREE.CanvasTexture {
@@ -19,74 +22,17 @@ function umbrellaTexture(): THREE.CanvasTexture {
  * when it leaves the scene, so the street never feels empty. They use
  * MeshStandardMaterial like Cole, so the neon point lights tint them as they
  * pass each sign — mostly reading as dark figures against the lit ground.
+ *
+ * Frames come from makePedFrames in sprites.ts (coat or hood cut, 4-phase
+ * walk); a compiled Aseprite sheet swaps in at runtime when present.
  */
-
-// 10×16 *side-profile* walker, facing right (mirrored for left). Split into a
-// static torso and two leg frames so the silhouette strides fore-and-aft like
-// a person seen from the side. '.' is transparent; letters map through a palette.
-const COAT_BODY = [
-  '...HHH....',
-  '..HHHf....',
-  '..CCCC....',
-  '..CCCCC...',
-  '..CCCCCC..',
-  '..CCCCC...',
-  '..CCCCC...',
-  '..CCCCC...',
-  '..CCCCC...',
-  '..CCCC....',
-  '..CCCC....',
-  '..CCCC....',
-];
-
-const HOOD_BODY = [
-  '...kkk....',
-  '..kkkf....',
-  '..kkkk....',
-  '..kkkkk...',
-  '.kkkkkk...',
-  '..kkkkkk..',
-  '..kkkkk...',
-  '..kkkkk...',
-  '..kkkk....',
-  '..kkkk....',
-  '..kkkk....',
-  '..kkkk....',
-];
-
-const LEGS_A = [
-  '..P..P....',
-  '.P...P....',
-  '.P....P...',
-  'BB....BB..',
-];
-
-const LEGS_B = [
-  '..PP......',
-  '..P.P.....',
-  '..P.P.....',
-  '.BB.BB....',
-];
 
 const COAT_TONES = ['#2a2f3a', '#33303a', '#2b3530', '#3a2e2e', '#26303c', '#34343a', '#2d2a32'];
 const ACCENTS = ['#4a3550', '#3a4a55', '#534033']; // rarer, slightly brighter coats
-const SKINS = ['#caa07c', '#9c7858', '#7a5a44', '#b98c66'];
 
-function pickPalette(): { body: string[]; palette: Record<string, string> } {
-  const hooded = Math.random() < 0.45;
-  const coat = (Math.random() < 0.15 ? ACCENTS : COAT_TONES)[
-    (Math.random() * (Math.random() < 0.15 ? ACCENTS : COAT_TONES).length) | 0
-  ];
-  const palette: Record<string, string> = {
-    H: '#15191f',
-    S: SKINS[(Math.random() * SKINS.length) | 0],
-    C: coat,
-    k: coat,
-    f: '#4a3c32',
-    P: '#1b1f25',
-    B: '#0d0f13',
-  };
-  return { body: hooded ? HOOD_BODY : COAT_BODY, palette };
+function pickCoat(): string {
+  const pool = Math.random() < 0.15 ? ACCENTS : COAT_TONES;
+  return pool[(Math.random() * pool.length) | 0];
 }
 
 /** Shared soft contact shadow so the walkers don't read as floating. */
@@ -102,8 +48,6 @@ function shadowTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-const SPRITE_W = 10;
-const SPRITE_H = 16;
 const X_BOUND = 30; // wrap point just past the visible street
 const FRAME_TIME = 0.18;
 
@@ -120,11 +64,12 @@ class Pedestrian implements Updatable {
   private readonly baseY: number;
 
   private readonly hasUmbrella: boolean;
+  private animator: SpriteAnimator | null = null;
 
   constructor(shadowTex: THREE.CanvasTexture, umbrellaTex: THREE.CanvasTexture) {
     this.hasUmbrella = Math.random() < 0.3;
-    const { body, palette } = pickPalette();
-    this.frames = [LEGS_A, LEGS_B].map((legs) => spriteTexture([...body, ...legs], palette));
+    const kind = Math.random() < 0.45 ? 'hood' : 'coat';
+    this.frames = makePedFrames(kind, pickCoat());
     this.material = new THREE.MeshStandardMaterial({
       map: this.frames[0],
       transparent: true,
@@ -135,7 +80,7 @@ class Pedestrian implements Updatable {
     });
 
     const height = 1.45 + Math.random() * 0.25;
-    const width = height * (SPRITE_W / SPRITE_H);
+    const width = height * (PED_W / PED_H);
     this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), this.material);
     this.baseY = height / 2;
     this.mesh.position.y = this.baseY;
@@ -166,6 +111,22 @@ class Pedestrian implements Updatable {
       -6.4 - Math.random() * 1.5, // sidewalk band, in front of the facades
     );
     this.mesh.scale.x = this.dir;
+
+    // Upgrade from the two-frame pixel map to a compiled Aseprite walk tag
+    // when the art pipeline has produced one.
+    this.tryUpgradeArt(height);
+  }
+
+  private async tryUpgradeArt(height: number) {
+    const id = Math.random() < 0.5 ? 'ped_a' : 'ped_b';
+    if (!(await hasSheet(id))) return;
+    const sheet = await loadSheet(id);
+    if (!sheet) return;
+    this.mesh.geometry.dispose();
+    this.mesh.geometry = new THREE.PlaneGeometry(height * sheet.aspect, height);
+    this.material.map = sheet.frames[0]?.texture ?? this.material.map;
+    this.animator = new SpriteAnimator(this.mesh, sheet, this.material);
+    this.animator.play({ tag: 'walk' });
   }
 
   update(dt: number) {
@@ -173,12 +134,17 @@ class Pedestrian implements Updatable {
     if (this.group.position.x > X_BOUND) this.group.position.x = -X_BOUND;
     else if (this.group.position.x < -X_BOUND) this.group.position.x = X_BOUND;
 
-    // Animation cadence scales with speed so faster walkers step quicker.
-    this.animTimer += dt * this.speed;
-    if (this.animTimer > FRAME_TIME) {
-      this.animTimer -= FRAME_TIME;
-      this.frame ^= 1;
-      this.material.map = this.frames[this.frame];
+    if (this.animator) {
+      this.animator.update(dt);
+    } else {
+      // Animation cadence scales with speed so faster walkers step quicker;
+      // cycle the four frames (stride A → pass → stride B → pass).
+      this.animTimer += dt * this.speed;
+      if (this.animTimer > FRAME_TIME) {
+        this.animTimer -= FRAME_TIME;
+        this.frame = (this.frame + 1) % this.frames.length;
+        this.material.map = this.frames[this.frame];
+      }
     }
     // Faint walk bob.
     this.bobPhase += dt * this.speed * 9;
@@ -187,7 +153,6 @@ class Pedestrian implements Updatable {
 
   dispose() {
     this.group.removeFromParent();
-    for (const tex of this.frames) tex.dispose();
     this.material.dispose();
     this.mesh.geometry.dispose();
   }

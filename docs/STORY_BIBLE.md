@@ -136,7 +136,18 @@ Lyra is a humanoid AI who becomes central to Cole's investigation. She may be on
 
 Lyra believes AI and humans do not need to destroy each other. But she is also hiding something.
 
-Possible versions of Lyra:
+### Canonical direction (locked, Aug 2026)
+
+Lyra's arc across the series is now fixed: **she has been watching Cole before he ever meets her, and she eventually becomes a traveling companion — an AI that accompanies him, Cortana-style, rather than a stationary NPC.**
+
+Concretely:
+
+- **Pre-introduction.** Lyra has been observing Cole's investigation (and possibly his prior cases / life) from inside the city's systems. She is not a stranger who happens to help him; she chose him, for reasons she does not fully disclose at first. When they finally meet in the flesh (planned: the studio or a Memory Den encounter), it is a reveal for Cole, not for her.
+- **Companion arc.** Over the issues Lyra moves from *watching* → *contacting* → *traveling with* Cole. The end-state is a persistent companion: an AI presence that rides alongside him (in his implants, on a device, in the city grid — exact diegetic form TBD), comments on the world, and is mechanically present across areas, not locked to one interior.
+- **Why this matters for design.** The four "possible versions" below are no longer either/or — they become *layers* of the same character revealed across the arc. The companion direction makes Version D (the Nobody witness / mirror) especially resonant: she has been watching the way the system watches, and chose to watch *differently*.
+- **What this does NOT commit to.** The exact trigger for her companion transition, the diegetic "where she lives" once traveling, and her combat/gameplay role are open. The story commitment is the relationship arc, not the mechanic.
+
+### Possible versions of Lyra (now read as facets of the locked arc, not alternatives)
 
 - **Version A: The AI ally** — Lyra is helping Cole because she believes the creativity-harvesting network is corrupting both humans and AI.
 - **Version B: The AI fragment** — Lyra contains pieces of harvested human creativity inside her own neural architecture. She may not know which thoughts are hers and which came from stolen minds.

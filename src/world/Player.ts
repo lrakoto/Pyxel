@@ -1,95 +1,20 @@
 import * as THREE from 'three';
 import { TUNING } from '../tuning';
-import { spriteTexture } from './pixelTextures';
+import { loadSheet, hasSheet, type SpriteSheet } from '../sprites/SpriteLibrary';
+import { SpriteAnimator } from '../sprites/SpriteAnimator';
+import { COLE_W, COLE_H, COLE_FRAMES } from './sprites';
 
 /**
- * Detective Cole: a 14×28 *side-profile* pixel sprite facing his direction of
- * travel (mirrored when he turns) — wide-brim hat, dark trench coat with lapel
- * and back-seam shading, and a muted gold scarf wrapped at the neck. The loose
- * tail of the scarf is a separate cloth ribbon (see Scarf below) so it can be
- * driven by wind/gravity and shimmer independently of the body frames. Real
- * Aseprite art will replace the pixel maps later; the lit-material setup stays.
+ * Detective Cole: side-profile pixel sprite facing his direction of travel
+ * (mirrored when he turns) — wide-brim hat, dark trench coat with lapel and
+ * back-seam shading, and a scarf wrapped at the neck. Body frames are drawn
+ * at 24x54 in sprites.ts (the detail level the Aseprite pipeline imports at),
+ * so a compiled real sheet is a content drop with the same proportions and
+ * anchor points. The loose scarf tail is a separate cloth ribbon (see Scarf
+ * below) so it can react to wind/gravity independently of the body.
  */
-const PALETTE: Record<string, string> = {
-  H: '#14171d', // hat
-  h: '#20242c', // hat brim
-  S: '#c49070', // skin
-  g: '#0d0f13', // sunglasses lens
-  C: '#2c333d', // trench coat
-  D: '#1b212a', // coat shadow (back seam, hem)
-  L: '#3a4350', // coat highlight (lapel, shoulder)
-  G: '#ee4444', // bright red scarf
-  b: '#1a1f28', // hat band
-  P: '#20242c', // trousers
-  B: '#0d0f13', // boots
-  f: '#7a5a44', // face shadow (under hat brim)
-};
-
-// Head + coat in profile, facing right. Shared across all frames (rows 0–21).
-const BODY = [
-  '....HHHHH.....', // fedora crown top
-  '...HHHHHHH....', // fedora crown
-  '..bHHHHHHHHb..', // fedora crown with hat band
-  '..hhhhhhhhhhh.', // fedora brim
-  '....fSSSSS....',
-  '....SSSggg....', // sunglasses
-  '....SSSSSS....',
-  '.....SSSSS....',
-  '....GGGGGG....',
-  '...GGGGGGGG...',
-  '..LCCCCCCCC...',
-  '..CCCCCCCLC...', // coat with front edge highlight
-  '..CDCCCCCCC...',
-  '..CDCCCCCCC...',
-  '..CDCCCCCC....',
-  '..CDCCCCCC....',
-  '..CCCCCCCC....',
-  '..CCCCCCCC....',
-  '..CCCCCCC.....',
-  '..CCCCCCC.....',
-  '..CCCDDDD.....',
-  '..CCCCCCC.....',
-];
-
-// Side-view legs: one forward, one back, striding fore-and-aft.
-const LEGS_IDLE = [
-  '...PP.PP......',
-  '...PP.PP......',
-  '...PP.PP......',
-  '...PP.PP......',
-  '..BBB.BBB.....',
-  '..BBB.BBB.....',
-];
-
-const LEGS_STRIDE = [
-  '...PP.PP......',
-  '..PP...PP.....',
-  '..P.....PP....',
-  '.PP.....P.....',
-  '.BB.....BB....',
-  'BB.......BB...',
-];
-
-const LEGS_PASS = [
-  '...PPPP.......',
-  '...PPPP.......',
-  '...PP.P.......',
-  '...PP.P.......',
-  '..BBB.BB......',
-  '..BBB.BBB.....',
-];
-
-const LEGS_MID = [
-  '...PP.P.......',
-  '...PP.PP......',
-  '..PP...P......',
-  '.PP....P......',
-  '.BB....BB.....',
-  'BB......BB....',
-];
-
-const SPRITE_W = 14;
-const SPRITE_H = 28;
+const SPRITE_W = COLE_W;
+const SPRITE_H = COLE_H;
 
 export interface MoveInput {
   left: boolean;
@@ -165,7 +90,10 @@ const RIM_GLSL = `
 
 const SPEED = 4.2;
 const WORLD_BOUND = 16;
-const FRAME_TIME = 0.16;
+/** Seconds per walk frame — cadence of the 4-phase cycle. */
+const WALK_FRAME = 0.16;
+/** How long the land-impact pose holds before settling to idle. */
+const LAND_TIME = 0.12;
 const HEIGHT = 1.7;
 // Jump: tuned so a tap clears ~1.4 world units and hangs for ~0.7s.
 const JUMP_V = 6.4;
@@ -374,15 +302,25 @@ export class Player {
   readonly shadowObject: THREE.Mesh;
   x = 0;
 
-  private readonly frames: THREE.Texture[];
   private readonly material: THREE.MeshStandardMaterial;
   private readonly scarf = new Scarf();
   private facing = 1;
-  private frame = 0;
-  private animTimer = 0;
   private prevX = 0;
   private jumpY = 0; // height of feet above the ground (0 = grounded)
   private vy = 0;
+  /** Frame texel size for the rim shader; updated if a .aseprite sheet takes over. */
+  private spriteW = SPRITE_W;
+  private spriteH = SPRITE_H;
+  // Aseprite-driven state (present once a real sheet has loaded).
+  private sheet: SpriteSheet | null = null;
+  private animator: SpriteAnimator | null = null;
+  private sheetReady = false;
+  private currentTag = '';
+  // Procedural-frame animation state (the default path).
+  private procState: 'idle' | 'walk' | 'air' = 'idle';
+  private procTimer = 0;
+  private procIdx = 0;
+  private landTimer = 0;
   private readonly rimUniforms = {
     uRimColor: { value: new THREE.Color(0, 0, 0) },
     uRimDirX: { value: 0 },
@@ -398,25 +336,8 @@ export class Player {
   };
 
   constructor() {
-    if (import.meta.env.DEV) {
-      for (const [name, legs] of [
-        ['idle', LEGS_IDLE],
-        ['stride', LEGS_STRIDE],
-        ['pass', LEGS_PASS],
-      ] as const) {
-        for (const [i, row] of [...BODY, ...legs].entries()) {
-          if (row.length !== SPRITE_W) {
-            console.error(`[Cole ${name}] row ${i} is ${row.length} wide, expected ${SPRITE_W}: "${row}"`);
-          }
-        }
-      }
-    }
-
-    this.frames = [LEGS_IDLE, LEGS_STRIDE, LEGS_MID, LEGS_PASS].map((legs) =>
-      spriteTexture([...BODY, ...legs], PALETTE),
-    );
     this.material = new THREE.MeshStandardMaterial({
-      map: this.frames[0],
+      map: COLE_FRAMES.idle[0],
       transparent: true,
       alphaTest: 0.5,
       roughness: 0.9,
@@ -454,6 +375,30 @@ export class Player {
     this.shadowObject.rotation.x = -Math.PI / 2;
     this.shadowObject.position.set(0, 0.02, -4);
     this.shadowObject.renderOrder = -1;
+
+    // Upgrade path: when the compiled Aseprite sheet appears, swap the
+    // procedural frames for the real animation. Everything else (rim, scarf,
+    // muzzle point) keeps working because the world-space proportions stay
+    // the same.
+    this.tryUpgradeArt();
+  }
+
+  private async tryUpgradeArt() {
+    if (!(await hasSheet('cole'))) return;
+    const sheet = await loadSheet('cole');
+    if (!sheet || this.sheetReady) return;
+    this.sheet = sheet;
+    this.sheetReady = true;
+    this.spriteW = sheet.frames[0]?.w ?? SPRITE_W;
+    this.spriteH = sheet.frames[0]?.h ?? SPRITE_H;
+    this.rimUniforms.uRimTexel.value.set(1 / this.spriteW, 1 / this.spriteH);
+    // Rebuild the plane at the new aspect so the world height stays constant
+    // while the silhouette gains detail.
+    this.mesh.geometry.dispose();
+    this.mesh.geometry = new THREE.PlaneGeometry(HEIGHT * sheet.aspect, HEIGHT);
+    this.animator = new SpriteAnimator(this.mesh, sheet, this.material);
+    this.animator.play({ tag: 'idle' });
+    this.currentTag = 'idle';
   }
 
   /** The scarf simulates in world space, so Game adds it to the scene directly. */
@@ -482,22 +427,11 @@ export class Player {
     if (walking) {
       this.facing = dir;
       this.x = THREE.MathUtils.clamp(this.x + dir * SPEED * dt, this.bounds.min, this.bounds.max);
-      this.animTimer += dt;
-      if (this.animTimer > FRAME_TIME) {
-        this.animTimer = 0;
-        if (this.frame === 1) this.frame = 2;
-        else if (this.frame === 2) this.frame = 3;
-        else this.frame = 1;
-        this.material.map = this.frames[this.frame];
-      }
-    } else if (this.frame !== 0) {
-      this.frame = 0;
-      this.animTimer = 0;
-      this.material.map = this.frames[0];
     }
 
     // Jump physics. A jump only starts from the ground; gravity then arcs the
     // body up and back down, landing the feet at y=0.
+    const wasAirborne = this.jumpY > 0;
     if (input.jump && this.jumpY <= 0) {
       this.vy = JUMP_V;
     }
@@ -507,9 +441,46 @@ export class Player {
       if (this.jumpY <= 0) {
         this.jumpY = 0;
         this.vy = 0;
+        if (wasAirborne) this.landTimer = LAND_TIME; // touched down this frame
       }
     }
     const airborne = this.jumpY > 0;
+
+    if (this.animator) {
+      // Aseprite-driven: map the same state onto authored tags when present.
+      const wanted: 'idle' | 'walk' | 'air' = airborne ? 'air' : walking ? 'walk' : 'idle';
+      if (wanted !== this.procState || (wanted === 'idle' && this.landTimer > 0)) {
+        this.procState = wanted;
+        const tag = wanted === 'air' ? 'jump' : wanted === 'walk' ? 'walk' : 'idle';
+        if (this.sheet?.tags[tag] && tag !== this.currentTag) {
+          this.animator.play({ tag });
+          this.currentTag = tag;
+        }
+      }
+      this.animator.update(dt);
+    } else {
+      // Procedural frames: idle, a 4-phase walk, and a jump/land pose.
+      const wanted: 'idle' | 'walk' | 'air' = airborne ? 'air' : walking ? 'walk' : 'idle';
+      if (wanted !== this.procState) {
+        this.procState = wanted;
+        this.procIdx = 0;
+        this.procTimer = 0;
+      }
+      this.procTimer += dt;
+      if (this.procState === 'walk') {
+        if (this.procTimer >= WALK_FRAME) {
+          this.procTimer -= WALK_FRAME;
+          this.procIdx = (this.procIdx + 1) % COLE_FRAMES.walk.length;
+        }
+        this.material.map = COLE_FRAMES.walk[this.procIdx];
+      } else if (this.procState === 'air') {
+        this.material.map = COLE_FRAMES.jump[0];
+      } else {
+        // Brief land-impact hold, then settle into the idle frame.
+        this.material.map = this.landTimer > 0 ? COLE_FRAMES.jump[1] : COLE_FRAMES.idle[0];
+      }
+    }
+    if (this.landTimer > 0) this.landTimer -= dt;
 
     this.mesh.position.x = this.x;
     this.mesh.scale.x = this.facing;

@@ -26,6 +26,15 @@ export interface InteractionDef {
    * Defaults to a chest-height marker if unset.
    */
   glintY?: number;
+  /**
+   * Clue id that must be held before this interaction appears at all. Used
+   * for NPCs who only show up after a story beat (e.g. Lyra after the
+   * studio case closes). When unset the interaction is always available.
+   * Availability is consulted by DialogueManager.findNearby and by the
+   * investigation glint loop, so gated interactions are invisible to
+   * both the explore prompt and the investigation glint system.
+   */
+  appearsAfterClue?: string;
 }
 
 /** Sector 7 street interactions — exported so sector7.ts can attach them to the area. */
@@ -129,6 +138,23 @@ export const SECTOR7_INTERACTIONS: InteractionDef[] = [
       'The curb where the sidewalk meets the road. Water pools in the cracks, reflecting the neon signs upside down. The asphalt is cracked and tar-patched — a map of the city\'s neglect rendered in black ribbon.',
     ],
   },
+  {
+    // Lyra — only present once the studio case has closed. She has been
+    // watching Cole; the dialogue is a reveal to him, not a first meeting
+    // for her. Placed near the Memory Den, where her archive lives.
+    x: 4.2, z: -6.5, radius: 2.6,
+    label: 'Lyra',
+    appearsAfterClue: 'studio-case-complete',
+    lines: [
+      'A figure steps out of the rain beneath the Memory Den awning. Hood up, hands still. She has been waiting — not surprised to see me. The opposite, if I\'m honest.',
+      '"Detective Cole." She knows my name. Of course she does. "You found the painting. You found the device. You read the wall." She lists them back to me like items on a receipt I didn\'t know I was writing.',
+      '"I\'ve been watching you work this case since the call came in. You notice things the systems miss — that\'s rare, and it\'s the reason I\'m standing here instead of staying a voice in the grid. Marlon was a friend. Or as close to one as something like me gets."',
+      '"The wall says find the first one. I know where the first fragment lives. It\'s in my archive — the very first memory I ever recorded, years ago, before I understood what I was holding." She tilts her hood back. The face underneath glows faint cyan, inhuman, calm. "Come inside. I\'ll show you what Marlon was trying to paint."',
+    ],
+    repeatLines: [
+      '"Whenever you\'re ready, Detective." Lyra hasn\'t moved from the awning. The Memory Den is right behind her. "The first fragment is inside. It\'s been waiting longer than you have."',
+    ],
+  },
 ];
 
 export class DialogueManager {
@@ -152,6 +178,23 @@ export class DialogueManager {
   /** Register the line resolver (called once at startup). */
   setResolver(fn: (def: InteractionDef) => string[]) {
     this.resolver = fn;
+  }
+
+  /**
+   * Availability predicate: an interaction with `appearsAfterClue` is only
+   * present once that clue is held. Backed by the journal; set at startup.
+   */
+  private hasClue: ((id: string) => boolean) | null = null;
+
+  /** Register the clue-availability predicate (called once at startup). */
+  setClueCheck(fn: (id: string) => boolean) {
+    this.hasClue = fn;
+  }
+
+  /** True if `def` should currently be reachable (its gating clue is held). */
+  isAvailable(def: InteractionDef): boolean {
+    if (!def.appearsAfterClue) return true;
+    return this.hasClue ? this.hasClue(def.appearsAfterClue) : false;
   }
 
   private readonly hintEl: HTMLElement;
@@ -179,6 +222,7 @@ export class DialogueManager {
   findNearby(playerX: number): InteractionDef | null {
     let best: { def: InteractionDef; dist: number } | null = null;
     for (const def of this.interactions) {
+      if (!this.isAvailable(def)) continue;
       const dx = def.x - playerX;
       const dist = Math.abs(dx);
       if (dist < def.radius && (!best || dist < best.dist)) {
@@ -190,6 +234,11 @@ export class DialogueManager {
 
   get isOpen(): boolean {
     return this.open;
+  }
+
+  /** All interactions currently reachable (gating clue held). */
+  get availableInteractions(): InteractionDef[] {
+    return this.interactions.filter((d) => this.isAvailable(d));
   }
 
   /** Start a dialogue session with the given interaction. */

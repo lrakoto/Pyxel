@@ -18,6 +18,71 @@ import { TUNING } from '../tuning';
 import { createTuningPanel } from '../debug/tuningPanel';
 import type { AreaWorld, DoorDef } from './area';
 import { SECTOR7_INTERACTIONS } from './dialogue';
+import { LYRA_W, LYRA_H, makeLyraFrame } from './sprites';
+
+/** Lyra's street presence: a hooded billboard with a cyan face-glow. */
+export interface LyraNPC extends Updatable {
+  readonly group: THREE.Group;
+  readonly faceLight: THREE.PointLight;
+  /** Show/hide her. Called by the game when the studio case closes. */
+  setVisible(v: boolean): void;
+  get visible(): boolean;
+}
+
+/** Lyra stands beneath the Memory Den awning once the studio case closes. */
+class LyraFigure implements LyraNPC {
+  readonly group = new THREE.Group();
+  readonly faceLight: THREE.PointLight;
+  private readonly material: THREE.MeshStandardMaterial;
+  private isVisible = false;
+  private glowPhase = 0;
+
+  constructor() {
+    const tex = makeLyraFrame();
+    this.material = new THREE.MeshStandardMaterial({
+      map: tex,
+      transparent: true,
+      alphaTest: 0.4,
+      roughness: 0.85,
+      metalness: 0,
+      side: THREE.DoubleSide,
+    });
+    const height = 1.7;
+    const width = height * (LYRA_W / LYRA_H);
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), this.material);
+    mesh.position.y = height / 2;
+    this.group.add(mesh);
+
+    // Cyan face-glow — her inhuman tell. Placed at face height.
+    this.faceLight = new THREE.PointLight('#7fe9ff', 0, 5, 2);
+    this.faceLight.position.set(0, 1.45, 0.3);
+    this.group.add(this.faceLight);
+
+    // Position beneath the Memory Den awning, matching the interaction.
+    this.group.position.set(4.2, 0, -6.5);
+    this.group.visible = false;
+  }
+
+  setVisible(v: boolean) {
+    this.isVisible = v;
+    this.group.visible = v;
+  }
+  get visible() { return this.isVisible; }
+
+  update(dt: number) {
+    if (!this.isVisible) return;
+    // Slow cyan glow breathing — the AI face isn't skin, it's light.
+    this.glowPhase += dt * 1.8;
+    const breath = 0.5 + 0.5 * Math.sin(this.glowPhase);
+    this.faceLight.intensity = 1.4 + breath * 1.1;
+    // Slight emissive tint on the material so the face band reads as lit.
+    this.material.emissive.setRGB(0.05 * breath, 0.18 * breath, 0.22 * breath);
+  }
+}
+
+function buildLyra(): LyraNPC {
+  return new LyraFigure();
+}
 
 export interface Updatable {
   update(dt: number): void;
@@ -188,6 +253,8 @@ export interface Sector7World {
   /** Camera world position, copied in by the game loop each frame — the
    *  specular sparkles need it to aim their reflections. */
   viewPoint: THREE.Vector3;
+  /** Lyra's street presence — null until built, toggled by the game. */
+  lyra: LyraNPC | null;
 }
 
 /** Doors in Sector 7 that lead to interiors. */
@@ -403,6 +470,15 @@ export function buildSector7(): Sector7World {
   // Vending screens tint Cole's wet rim just like the signs do.
   signLights.push(...street.lights);
 
+  // Lyra — met standing beneath the Memory Den awning. She is hidden until
+  // the studio case closes (the `studio-case-complete` clue), then revealed
+  // by the game via lyra.setVisible(true). Built here so her scene graph
+  // exists from the start; visibility is just a flag.
+  const lyra = buildLyra();
+  scene.add(lyra.group);
+  signLights.push(lyra.faceLight);
+  updatables.push(lyra);
+
   // Warm storefront spill raking across the walkway — the orange key light
   // from the reference frame.
   const spill = new THREE.PointLight('#ff9a4a', 20, 15, 2);
@@ -461,12 +537,13 @@ export function buildSector7(): Sector7World {
     });
   }
 
-  return { scene, updatables, signLights, viewPoint };
+  return { scene, updatables, signLights, viewPoint, lyra };
 }
 
 /** Builds Sector 7 as a full AreaWorld with doors and interactions. */
 export function buildSector7Area(): AreaWorld {
   const base = buildSector7();
+  const lyra = base.lyra;
   return {
     id: 'sector7',
     displayName: 'NEW ANGELES — SECTOR 7',
@@ -480,5 +557,13 @@ export function buildSector7Area(): AreaWorld {
     ambient: { color: '#1e2a44', intensity: 0.45 },
     bounds: { min: -16, max: 16 },
     cameraTarget: { y: 2.0, z: 0 },
+    // Reveal Lyra the moment the studio case closes (and on every entry to
+    // Sector 7 if it was already closed in a prior session).
+    onClueAdded: (clueId) => {
+      if (clueId === 'studio-case-complete') lyra?.setVisible(true);
+    },
+    onEnter: (hasClue) => {
+      lyra?.setVisible(hasClue('studio-case-complete'));
+    },
   };
 }

@@ -55,6 +55,18 @@ export interface AreaWorld {
   bounds: { min: number; max: number };
   /** Camera look-at target. */
   cameraTarget: { y: number; z: number };
+  /**
+   * Optional hook fired by the game whenever a clue is added to the
+   * journal while this area is active. Areas use it to react to case
+   * progress — e.g. Sector 7 reveals Lyra once the studio case closes.
+   */
+  onClueAdded?: (clueId: string) => void;
+  /**
+   * Optional hook fired when this area becomes active (after a
+   * transition). Lets areas sync their state to the current journal
+   * — e.g. show Lyra if the gating clue was already collected earlier.
+   */
+  onEnter?: (hasClue: (id: string) => boolean) => void;
 }
 
 /** Registry of all area builders. Game.ts populates this and looks up by id. */

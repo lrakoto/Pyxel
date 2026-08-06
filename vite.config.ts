@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from 'vite';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, watch, existsSync } from 'node:fs';
+import { execFile } from 'node:child_process';
 import { resolve } from 'node:path';
 import { TUNING_SCHEMA } from './src/tuningSchema';
 
@@ -59,6 +60,39 @@ function tuningSaver(): Plugin {
   };
 }
 
+/**
+ * Watches assets/sprites/ and re-runs the .aseprite compiler whenever a file
+ * lands or changes, so art drops hot-swap without a server restart. The
+ * importer itself is a plain Node script (tools/aseprite-import.mjs) so the
+ * same code path runs for `npm run build`.
+ */
+function asepriteWatcher(): Plugin {
+  return {
+    name: 'aseprite-watcher',
+    apply: 'serve',
+    configureServer(server) {
+      const srcDir = resolve(__dirname, 'assets/sprites');
+      const runImport = () => {
+        execFile(process.execPath, [resolve(__dirname, 'tools/aseprite-import.mjs')], (err, stdout, stderr) => {
+          if (stdout) server.config.logger.info(stdout.trim(), { timestamp: true });
+          if (stderr) server.config.logger.warn(stderr.trim(), { timestamp: true });
+          if (err) server.config.logger.error(`[sprites] import failed: ${err.message}`, { timestamp: true });
+          else server.ws.send({ type: 'full-reload' });
+        });
+      };
+      runImport();
+      if (!existsSync(srcDir)) return;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      watch(srcDir, { recursive: false }, (_event, filename) => {
+        if (!filename || !filename.endsWith('.aseprite')) return;
+        if (timer) clearTimeout(timer);
+        // Debounce saves — Aseprite can touch the file more than once.
+        timer = setTimeout(runImport, 150);
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [tuningSaver()],
+  plugins: [tuningSaver(), asepriteWatcher()],
 });

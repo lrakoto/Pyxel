@@ -35,10 +35,10 @@ Controls:
 | Click/tap a glint | Walk there; examination fires automatically on arrival |
 | Click/tap the ground | Walk there (investigation mode) |
 | [ / ] | Cycle focus between glints (investigation mode) |
-| Space | Advance dialogue / dismiss battle stub |
+| Space | Advance dialogue |
 | J or Tab | Case journal (pauses the game) |
-| B | Dev trigger — enter battle stub |
-| Enter | Dismiss battle stub |
+| B | Dev trigger — enter shooter combat |
+| → in combat | A/D or ←/→ move · Space/W/↑ jump · mouse aim · hold LMB fire · Esc/Q exit |
 
 ## Structure
 
@@ -46,7 +46,7 @@ Controls:
 src/
   main.ts               entry point
   core/Game.ts          renderer, camera, post-processing, game loop, area registry + transitions
-  core/states/          state machine (Explore ↔ Investigate ↔ Battle), area transition system
+  core/states/          state machine (Explore ↔ Investigate ↔ Shooter), area transition system
   core/investigation/   clue model, case journal store, journal overlay UI, evidence toast
   world/sector7.ts      Sector 7 street scene (exterior area)
   world/studio.ts       Marlon Graves' studio (interior crime scene area)
@@ -62,9 +62,8 @@ docs/
 ## Roadmap
 
 1. ✅ REPLACED-style render pipeline proof-of-scene (walkable Sector 7 street)
-2. ✅ CTB battle system (FFX-style conditional turn-based queue) with HTML/CSS UI
-   - Being converted to a real-time side-scrolling shooter (work on separate PC, not pushed)
-3. ✅ Scene/state management (street ↔ battle transitions, area system with fade transitions)
+2. ✅ Real-time shooter combat slice (side-scrolling run-and-gun in ShooterState — replaced the earlier CTB prototype)
+3. ✅ Scene/state management (street ↔ combat transitions, area system with fade transitions)
 4. ✅ Dialogue and investigation systems (14 street + 9 studio interactables, typewriter text)
 5. ✅ Area expansion (Sector 7 street ↔ Marlon's studio interior)
 6. 🚧 Visual polish (cinematic title, HUD, post-processing, studio textures — done; more to come)
@@ -75,6 +74,8 @@ docs/
 11. ⬜ More interiors (Memory Den, Hotel, clinics, galleries)
 
 ## Recent additions
+
+- **Shooter combat slice** — press B on the street to enter real-time side-scrolling combat: keyboard moves and jumps Cole, mouse aims a 360° machine pistol, hold LMB to auto-fire. Ground enforcers and aerial drones arrive in waves; kills trigger hit-stop, screen shake, knockback, damage numbers, and procedural combat SFX. A vitals bar, downed/revive flow, and DOM crosshair HUD complete the slice; Esc/Q returns to exploration.
 
 - **Investigation mode + case journal** — press I (or E near an object) to enter investigation: examinables pulse with cyan glints, walk or click between them, E to examine. Objects grant evidence clues (toast notification + journal entry); the journal overlay (J/Tab) pauses the game with a case-file layout (current objective + collected evidence). Objects respond differently once you hold related clues — 8 clues and 5 conditional reveals wired into the studio scene.
 - **Area transition system** — fade-out/swap-scene/fade-in between exterior and interior areas. Door prompts, dynamic interaction sets, player repositioning, bounds per area.

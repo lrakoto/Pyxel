@@ -17,6 +17,18 @@ export class AudioManager {
   private footstepTimer = 0;
   private stepParity = 0;
 
+  /** Ambience bed gains — exterior (street) vs interior (building). */
+  private extGain: GainNode | null = null;
+  private intGain: GainNode | null = null;
+  /** Interior sub-components so the tuning panel can drive them live. */
+  private intMuffledRainG: GainNode | null = null;
+  private intBuildingHumG: GainNode | null = null;
+  private neuralPulseG: GainNode | null = null;
+  /** Whether the interior bed is currently active (exterior fade complete). */
+  private interiorActive = false;
+  /** Drives the studio neural-pulse interval. */
+  private neuralTimer = 0;
+
   /** Initialises the AudioContext and wires up all continuous sound sources. */
   init() {
     if (this.ctx) return;
@@ -34,9 +46,18 @@ export class AudioManager {
     limiter.release.value = 0.12;
     this.master.connect(limiter).connect(this.ctx.destination);
 
+    // Two ambience beds, crossfaded by setExterior().
+    this.extGain = this.ctx.createGain();
+    this.extGain.gain.value = TUNING.ambienceExterior;
+    this.extGain.connect(this.master);
+    this.intGain = this.ctx.createGain();
+    this.intGain.gain.value = 0;
+    this.intGain.connect(this.master);
+
     this.startRain();
     this.startHum();
     this.startDrone();
+    this.startInteriorBed();
   }
 
   private createNoiseBuffer(duration: number): AudioBuffer {
@@ -55,13 +76,13 @@ export class AudioManager {
     return src;
   }
 
-  /* ── Rain (two-layer noise: near + far) ─────────────────────────────── */
+  /* ── Rain (two-layer noise: near + far) — exterior bed ─────────────── */
 
   private startRain() {
     const ctx = this.ctx!;
     const g = ctx.createGain();
     g.gain.value = 0.35;
-    g.connect(this.master!);
+    g.connect(this.extGain!);
 
     // Near rain — brighter noise, moderate low-pass
     const near = this.noiseSource(this.createNoiseBuffer(2));
@@ -91,13 +112,13 @@ export class AudioManager {
     far.start();
   }
 
-  /* ── Neon hum (detuned 50/60 Hz harmonics) ─────────────────────────── */
+  /* ── Neon hum (detuned 50/60 Hz harmonics) — exterior bed ──────────── */
 
   private startHum() {
     const ctx = this.ctx!;
     const g = ctx.createGain();
     g.gain.value = 0.06;
-    g.connect(this.master!);
+    g.connect(this.extGain!);
 
     const freqs = [50, 60, 100, 120, 180];
     for (const f of freqs) {
@@ -111,13 +132,13 @@ export class AudioManager {
     }
   }
 
-  /* ── Deep ambient drone ────────────────────────────────────────────── */
+  /* ── Deep ambient drone — exterior bed ─────────────────────────────── */
 
   private startDrone() {
     const ctx = this.ctx!;
     const g = ctx.createGain();
     g.gain.value = 0.08;
-    g.connect(this.master!);
+    g.connect(this.extGain!);
 
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
@@ -130,6 +151,100 @@ export class AudioManager {
       osc.connect(lp).connect(g);
       osc.start();
     }
+  }
+
+  /* ── Interior bed: building hum + muffled rain + neural pulse ──────── */
+
+  /**
+   * Built once at init but kept silent (intGain = 0) until setExterior(false)
+   * crossfades it in. Muffled rain bleeds through walls; a low building hum
+   * sits under everything; a slow neural-device pulse thumps periodically
+   * (the studio's device is still warm).
+   */
+  private startInteriorBed() {
+    const ctx = this.ctx!;
+
+    // Muffled rain — very dark low-passed noise, as if heard through a wall.
+    this.intMuffledRainG = ctx.createGain();
+    this.intMuffledRainG.gain.value = TUNING.interiorMuffledRain * 0.3;
+    this.intMuffledRainG.connect(this.intGain!);
+    const mRain = this.noiseSource(this.createNoiseBuffer(3));
+    const mRainF = ctx.createBiquadFilter();
+    mRainF.type = 'lowpass';
+    mRainF.frequency.value = 180;
+    const mRainG2 = ctx.createGain();
+    mRainG2.gain.value = 0.5;
+    mRain.connect(mRainF).connect(mRainG2).connect(this.intMuffledRainG);
+    mRain.start();
+
+    // Building hum — lower, thicker, slower than neon. Two slightly
+    // detuned sines plus a faint 60Hz mains bleed.
+    this.intBuildingHumG = ctx.createGain();
+    this.intBuildingHumG.gain.value = TUNING.interiorBuildingHum * 0.5;
+    this.intBuildingHumG.connect(this.intGain!);
+    for (const f of [40, 41, 60]) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = f;
+      const og = ctx.createGain();
+      og.gain.value = 0.06;
+      osc.connect(og).connect(this.intBuildingHumG);
+      osc.start();
+    }
+
+    // Neural pulse — the studio device still running. A slow heartbeat-like
+    // low sine with a soft click, fired on a timer in update(). The pulse
+    // gain node is the per-event envelope target; neuralPulseG scales it.
+    this.neuralPulseG = ctx.createGain();
+    this.neuralPulseG.gain.value = TUNING.neuralPulse;
+    this.neuralPulseG.connect(this.intGain!);
+  }
+
+  /**
+   * Crossfade between the exterior (street) and interior (building) ambience
+   * beds. Called on area transition. Interior keeps the studio's neural
+   * pulse timer running; it only ticks while the interior bed is audible.
+   */
+  setExterior(exterior: boolean) {
+    this.interiorActive = !exterior;
+  }
+
+  /** Live-update interior sub-bed levels from TUNING (driven by the panel). */
+  refreshInteriorLevels() {
+    if (this.intMuffledRainG) this.intMuffledRainG.gain.value = TUNING.interiorMuffledRain * 0.3;
+    if (this.intBuildingHumG) this.intBuildingHumG.gain.value = TUNING.interiorBuildingHum * 0.5;
+    if (this.neuralPulseG) this.neuralPulseG.gain.value = TUNING.neuralPulse;
+  }
+
+  /** Fire one neural-pulse heartbeat. Called from update() on a timer. */
+  private playNeuralPulse() {
+    if (!this.ctx || !this.neuralPulseG) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    // Low thump
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(70, t);
+    osc.frequency.exponentialRampToValueAtTime(38, t + 0.18);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(0.5, t + 0.02);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+    osc.connect(env).connect(this.neuralPulseG);
+    osc.start(t);
+    osc.stop(t + 0.4);
+    // Soft metallic click on top
+    const src = ctx.createBufferSource();
+    src.buffer = this.createNoiseBuffer(0.03);
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 1400;
+    bp.Q.value = 2;
+    const cenv = ctx.createGain();
+    cenv.gain.setValueAtTime(0.12, t);
+    cenv.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
+    src.connect(bp).connect(cenv).connect(this.neuralPulseG);
+    src.start(t);
   }
 
   /* ── Discovery chime ─────────────────────────────────────────────── */
@@ -350,6 +465,18 @@ export class AudioManager {
   update(dt: number, walking: boolean) {
     if (!this.ctx) return;
 
+    // Drive the bed crossfade toward the live TUNING levels. setExterior()
+    // only flips `interiorActive`; the actual gain ramps happen here so the
+    // tuning panel can change bed levels and hear it immediately.
+    if (this.extGain && this.intGain) {
+      const extTarget = this.interiorActive ? 0.0001 : TUNING.ambienceExterior;
+      const intTarget = this.interiorActive ? TUNING.ambienceInterior : 0.0001;
+      const tau = 0.2; // ~0.6s crossfade
+      this.extGain.gain.setTargetAtTime(extTarget, this.ctx.currentTime, tau);
+      this.intGain.gain.setTargetAtTime(intTarget, this.ctx.currentTime, tau);
+    }
+    this.refreshInteriorLevels();
+
     if (walking) {
       this.footstepTimer += dt;
       if (this.footstepTimer >= TUNING.footstepInterval) {
@@ -358,6 +485,16 @@ export class AudioManager {
       }
     } else {
       this.footstepTimer = 0;
+    }
+
+    // Neural pulse — only when the interior bed is audible. ~38 bpm, the
+    // pacing of a slow mechanical breath rather than a heartbeat.
+    if (this.interiorActive) {
+      this.neuralTimer += dt;
+      if (this.neuralTimer >= 1.6) {
+        this.neuralTimer -= 1.6;
+        this.playNeuralPulse();
+      }
     }
   }
 }

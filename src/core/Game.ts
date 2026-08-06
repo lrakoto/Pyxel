@@ -116,7 +116,14 @@ export class Game {
       return def.lines;
     };
     dialogue.setResolver(resolveLines);
-    journal.onClueAdded = () => { if (journalUI.isOpen) journalUI.show(); };
+    // Availability: an interaction gated by `appearsAfterClue` only shows up
+    // once that clue is held. Backed by the journal so it's always live.
+    dialogue.setClueCheck((id) => journal.has(id));
+    journal.onClueAdded = (clue) => {
+      if (journalUI.isOpen) journalUI.show();
+      // Let the active area react to case progress (e.g. Lyra reveal).
+      this.ctx.area.onClueAdded?.(clue.id);
+    };
 
     // Set initial player bounds from the area
     player.setBounds(area.bounds.min, area.bounds.max);
@@ -209,6 +216,9 @@ export class Game {
 
     this.state = new StateMachine(this.ctx);
     this.state.transition(new ExploreState());
+    // Sync the starting area to current case progress (no-op on a fresh
+    // save, but correct if the journal is ever pre-populated).
+    area.onEnter?.((id) => journal.has(id));
 
     window.addEventListener('keydown', (e) => {
       if (!this.audioReady && !e.repeat) {
@@ -314,6 +324,12 @@ export class Game {
       this.ctx.updatables = newArea.updatables;
       this.ctx.signLights = newArea.signLights;
       this.ctx.dialogue.setInteractions(newArea.interactions);
+
+      // Swap the ambience bed to match the area (street rain → interior hum).
+      this.ctx.audio.setExterior(newArea.exterior);
+      // Let the new area sync its state to current case progress (e.g. show
+      // Lyra if the studio case was already closed before this entry).
+      newArea.onEnter?.((id) => this.ctx.journal.has(id));
 
       // Update HUD location label
       const locEl = document.getElementById('location');

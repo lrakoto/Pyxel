@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { canvasTexture } from './pixelTextures';
+import { loadSheet, hasSheet } from '../sprites/SpriteLibrary';
 import type { Updatable } from './sector7';
 import type { AreaWorld, DoorDef } from './area';
 import type { InteractionDef } from './dialogue';
@@ -891,6 +892,21 @@ export function buildStudio(): AreaWorld {
   const painting = new THREE.Mesh(new THREE.PlaneGeometry(5, 3.75), paintingMat);
   painting.position.set(0, 4, -7.95);
   scene.add(painting);
+  // Swap in the compiled Aseprite sheet when it exists (single "static" tag),
+  // so the centrepiece gets the same art pipeline as the characters.
+  void (async () => {
+    if (!(await hasSheet('painting'))) return;
+    const sheet = await loadSheet('painting');
+    if (!sheet) return;
+    const tex = sheet.frames[0]?.texture;
+    if (!tex) return;
+    paintingMat.map?.dispose();
+    paintingMat.map = tex;
+    paintingMat.needsUpdate = true;
+    // Keep the painting's world height; the sheet's aspect sets the width.
+    painting.geometry.dispose();
+    painting.geometry = new THREE.PlaneGeometry(3.75 * sheet.aspect, 3.75);
+  })();
   // Painting frame — dark wood
   const frameMat = new THREE.MeshStandardMaterial({ color: '#2a1a10', roughness: 0.85 });
   const frameTop = new THREE.Mesh(new THREE.BoxGeometry(5.4, 0.15, 0.1), frameMat);

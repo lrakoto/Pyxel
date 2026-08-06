@@ -1,5 +1,10 @@
 import * as THREE from 'three';
-import { spriteTexture } from '../pixelTextures';
+import { loadSheet, hasSheet, type SpriteSheet } from '../../sprites/SpriteLibrary';
+import { SpriteAnimator } from '../../sprites/SpriteAnimator';
+import {
+  ENFORCER_W, ENFORCER_H, ENFORCER_FRAMES,
+  DRONE_W, DRONE_H, DRONE_FRAMES,
+} from '../sprites';
 
 /**
  * Combat enemies for the shooter slice, as camera-facing pixel billboards on the
@@ -9,57 +14,15 @@ import { spriteTexture } from '../pixelTextures';
  *   - drone : an aerial unit that floats in and dives at him, bobbing in the air.
  * Each takes hits (white flash + hp), deals contact damage, and dies when hp
  * runs out. A shared lit material lets the neon scene fall on them like Cole.
+ *
+ * Procedural frames live in sprites.ts alongside Cole; a compiled Aseprite
+ * sheet of the same id ("enforcer" / "drone") swaps in at runtime.
  */
 
 export type EnemyKind = 'ground' | 'drone';
 
-const ENFORCER = [
-  '....MMMMMM....',
-  '...MMMMMMMM...',
-  '...MSSVVSSM...',
-  '...MSSSSSSM...',
-  '....JJJJJJ....',
-  '..MJJJJJJJJM..',
-  '..JJJJJJJJJJ..',
-  '..JJjJJJJjJJ..',
-  '..JJjJJJJjJJ..',
-  '..JJJJJJJJJJ..',
-  '..JJJJJJJJJJ..',
-  '...JJJJJJJJ...',
-  '...JJJ..JJJ...',
-  '...JJ....JJ...',
-  '...JJ....JJ...',
-  '...BB....BB...',
-];
-const ENFORCER_PALETTE: Record<string, string> = {
-  M: '#3a4250', // helmet / armour plate
-  S: '#9c6b48', // skin
-  V: '#ff3b46', // visor glow
-  J: '#262b35', // jacket
-  j: '#161a21', // jacket shadow
-  B: '#0e1014', // boots
-};
-
-const DRONE = [
-  'M..M....M..M',
-  '.MM......MM.',
-  '...dDDDDd...',
-  '..dDDDDDDd..',
-  '..DDVVVVDD..',
-  '..dDDDDDDd..',
-  '...dDDDDd...',
-  '....d..d....',
-];
-const DRONE_PALETTE: Record<string, string> = {
-  M: '#4a5360', // rotor blur
-  D: '#2b313c', // hull
-  d: '#161a21', // hull shadow
-  V: '#ff3b46', // sensor eye
-};
-
 interface Spec {
-  rows: string[];
-  palette: Record<string, string>;
+  frames: THREE.CanvasTexture[];
   px: { w: number; h: number };
   worldH: number;
   hp: number;
@@ -71,9 +34,8 @@ interface Spec {
 
 const SPECS: Record<EnemyKind, Spec> = {
   ground: {
-    rows: ENFORCER,
-    palette: ENFORCER_PALETTE,
-    px: { w: 14, h: 16 },
+    frames: ENFORCER_FRAMES.walk,
+    px: { w: ENFORCER_W, h: ENFORCER_H },
     worldH: 1.75,
     hp: 40, // 4 pistol rounds (10 dmg each)
     speed: 2.3,
@@ -82,9 +44,8 @@ const SPECS: Record<EnemyKind, Spec> = {
     emissive: '#ff3b46',
   },
   drone: {
-    rows: DRONE,
-    palette: DRONE_PALETTE,
-    px: { w: 12, h: 8 },
+    frames: DRONE_FRAMES.hover,
+    px: { w: DRONE_W, h: DRONE_H },
     worldH: 0.85,
     hp: 20, // 2 pistol rounds
     speed: 3.4,
@@ -112,6 +73,12 @@ export class Enemy {
   private facing = 1;
   private knockVx = 0;
   private knockVy = 0;
+  // Procedural-frame animation state.
+  private walkTimer = Math.random() * 0.5;
+  private walkFrame = 0;
+  // Aseprite-driven state: null until the compiled sheet finishes loading.
+  private sheet: SpriteSheet | null = null;
+  private animator: SpriteAnimator | null = null;
 
   constructor(kind: EnemyKind, x: number) {
     this.kind = kind;
@@ -124,7 +91,7 @@ export class Enemy {
 
     this.baseEmissive = new THREE.Color(spec.emissive);
     this.material = new THREE.MeshStandardMaterial({
-      map: spriteTexture(spec.rows, spec.palette),
+      map: spec.frames[0],
       transparent: true,
       alphaTest: 0.5,
       roughness: 0.85,
@@ -139,11 +106,32 @@ export class Enemy {
     this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, spec.worldH), this.material);
     this.mesh.position.set(this.x, this.y, 0);
     this.mesh.renderOrder = 2;
+
+    // Swap in the compiled Aseprite sheet (walk / spin / death tags) when it
+    // exists; the procedural frames above remain the fallback otherwise.
+    this.tryUpgradeArt();
+  }
+
+  private async tryUpgradeArt() {
+    const id = this.kind === 'ground' ? 'enforcer' : 'drone';
+    if (!(await hasSheet(id))) return;
+    const sheet = await loadSheet(id);
+    if (!sheet) return;
+    this.sheet = sheet;
+    this.mesh.geometry.dispose();
+    this.mesh.geometry = new THREE.PlaneGeometry(this.spec.worldH * sheet.aspect, this.spec.worldH);
+    this.material.map = sheet.frames[0]?.texture ?? this.material.map;
+    this.animator = new SpriteAnimator(this.mesh, sheet, this.material);
+    this.animator.play({ tag: 'walk' });
   }
 
   /** Steers toward Cole at (targetX, targetY); returns nothing. */
   update(dt: number, targetX: number, targetY: number) {
-    if (this.dead) return;
+    if (this.dead) {
+      // Dead enemies only need their death animation to keep playing.
+      this.animator?.update(dt);
+      return;
+    }
     this.t += dt;
 
     if (this.kind === 'ground') {
@@ -179,6 +167,17 @@ export class Enemy {
 
     this.mesh.position.set(this.x, this.y, 0);
     this.mesh.scale.x = this.facing >= 0 ? 1 : -1;
+    this.animator?.update(dt);
+    if (!this.animator) {
+      // Procedural frame: cycle the walk loop. Drones use the same timer —
+      // their two hover frames read as rotor spin.
+      this.walkTimer += dt;
+      if (this.walkTimer >= 0.14) {
+        this.walkTimer = 0;
+        this.walkFrame = (this.walkFrame + 1) % this.spec.frames.length;
+        this.material.map = this.spec.frames[this.walkFrame];
+      }
+    }
 
     if (this.hitFlash > 0) {
       this.hitFlash -= dt;
@@ -199,6 +198,10 @@ export class Enemy {
     this.hitFlash = 0.12;
     if (this.hp <= 0) {
       this.dead = true;
+      // Let the Aseprite death tag play through once, if the sheet ships one.
+      if (this.sheet?.tags['death'] && this.animator) {
+        this.animator.play({ tag: 'death' });
+      }
       return true;
     }
     return false;
@@ -212,7 +215,6 @@ export class Enemy {
 
   dispose() {
     this.mesh.geometry.dispose();
-    this.material.map?.dispose();
     this.material.dispose();
   }
 }
