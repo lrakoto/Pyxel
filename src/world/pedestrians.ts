@@ -149,6 +149,9 @@ class Pedestrian implements Updatable {
     // Faint walk bob.
     this.bobPhase += dt * this.speed * 9;
     this.mesh.position.y = this.baseY + Math.abs(Math.sin(this.bobPhase)) * 0.03;
+    // Tiny shoulder-led counter sway breaks the paper-doll glide without
+    // competing with the four authored leg phases.
+    this.mesh.rotation.z = -this.dir * Math.sin(this.bobPhase) * 0.012;
   }
 
   dispose() {

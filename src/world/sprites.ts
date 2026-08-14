@@ -38,7 +38,7 @@ function spriteFromRows(rows: string[], palette: Record<string, string>): THREE.
 }
 
 /* ------------------------------------------------------------------ */
-/* Cole: 24×54. Side-profile, facing right.                            */
+/* Cole: 32×64. Tall cinematic side-profile, facing right.             */
 /*                                                                     */
 /* Vertical layout (texels):                                           */
 /*   hat crown   2–9    (the 0–1 rows are padding)                     */
@@ -49,8 +49,8 @@ function spriteFromRows(rows: string[], palette: Record<string, string>): THREE.
 /*   legs/boots  48–53  (frame-specific)                               */
 /* ------------------------------------------------------------------ */
 
-export const COLE_W = 24;
-export const COLE_H = 54;
+export const COLE_W = 32;
+export const COLE_H = 64;
 
 export const COLE_PALETTE: Record<string, string> = {
   H: '#14171d', // hat
@@ -62,6 +62,7 @@ export const COLE_PALETTE: Record<string, string> = {
   C: '#2c333d', // trench coat
   D: '#1b212a', // coat shadow (seam, hem)
   L: '#3a4350', // coat highlight (lapel, shoulder)
+  N: '#62788a', // rain-caught blue-grey edge
   G: '#ee4444', // scarf
   t: '#0d0f13', // belt
   P: '#20242c', // trousers
@@ -69,134 +70,92 @@ export const COLE_PALETTE: Record<string, string> = {
   B: '#0d0f13', // boots
 };
 
-/**
- * Cole's body for the legs-together frames (idle). Rows 0–47 are the torso;
- * the leg/boot block is supplied per pose.
- */
-const COLE_BODY_TOGETHER = [
-  '........................', // 0  padding
-  '........................', // 1  padding
-  '...........HHHH.........', // 2
-  '..........HHHHHH........', // 3  crown top taper
-  '.........HHHHHHHH.......', // 4
-  '.........HHHHHHHH.......', // 5
-  '.........HHHHHHHH.......', // 6
-  '.........HHHHHHHH.......', // 7
-  '.........HHHHHHHH.......', // 8
-  '........bbHHHHHHbb......', // 9  hat band
-  '......hhhhhhhhhhhhhh....', // 10 brim top
-  '.hhhhhhhhhhhhhhhhhhhhhh.', // 11 wide brim
-  '........fffSSSSSS.......', // 12
-  '........SSSSSSSS........', // 13
-  '........SSSSgggg........', // 14 sunglasses
-  '........SSSSgggg........', // 15
-  '........SSSSSSS.........', // 16 chin
-  '.........SSSSS..........', // 17 jaw taper
-  '........GGGGGGG.........', // 18 scarf sits at neck
-  '.......GGGGGGGGG........', // 19
-  '.......GGGGGGGGG........', // 20
-  '......LCCCCCCCCC........', // 21 collar / shoulders
-  '.....CCCCCCCCCCC........', // 22
-  '....CCCCCCCCCCC.........', // 23
-  '...CCCCCCCCCCCD.........', // 24
-  '...CDCCCCCCCCCD.........', // 25
-  '...CDCCCCCCCCCD.........', // 26
-  '..CCDCCCCCCCCDD.........', // 27
-  '..CCDCCCCCCCCDD.........', // 28
-  '..CCDCCCCCCCCDD.........', // 29
-  '..CCDCCCCCCCDD..........', // 30
-  '..CCDCCCCCCCDD..........', // 31
-  '..CCDCCCCCCDD...........', // 32
-  '..CCDCCCCCCDD...........', // 33
-  '..CCDCCCCCCDD...........', // 34
-  '..CCDCCCCCDDD...........', // 35 belt line shadow begins
-  '..CCDCCCCCDDD...........', // 36
-  '..CCDCCCCDDDD...........', // 37
-  '..CCDCCCCDDDD...........', // 38
-  '..CCDCCCDDDD............', // 39
-  '..CCDCCCDDDD............', // 40
-  '..CCDCCDDDD.............', // 41 coat flares back
-  '..CCDCCDDDD.............', // 42
-  '..CCDCDDDD..............', // 43
-  '..CCDCDDDD..............', // 44
-  '..CCDDDDD...............', // 45
-  '..CCDDDDD...............', // 46 hem
-  '..CCDDD.................', // 47 hem tail
-];
+type ColePose = { stride?: number; crouch?: number; airborne?: boolean };
 
-/** Mirrors each row left-to-right (for alternating walk phases). */
+/** Fresh 32×64 Cole art: every pose is drawn independently at native pixel size. */
+function makeColeFrame({ stride = 0, crouch = 0, airborne = false }: ColePose = {}): THREE.CanvasTexture {
+  return canvasTexture(COLE_W, COLE_H, (ctx) => {
+    const rect = (color: string, x: number, y: number, w: number, h: number) => {
+      ctx.fillStyle = color;
+      ctx.fillRect(Math.round(x), Math.round(y + crouch), w, h);
+    };
+    const poly = (color: string, pts: [number, number][]) => {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y + crouch) : ctx.moveTo(x, y + crouch));
+      ctx.closePath();
+      ctx.fill();
+    };
+
+    // Low fedora with a restrained brim; crown, band and wet edge stay
+    // separate so the hat no longer merges into one oversized dark block.
+    rect(COLE_PALETTE.H, 13, 2, 8, 1);
+    rect(COLE_PALETTE.H, 11, 3, 12, 6);
+    rect(COLE_PALETTE.b, 10, 8, 14, 2);
+    rect(COLE_PALETTE.h, 8, 10, 18, 2);
+    rect('#080a0d', 10, 11, 15, 1);
+    rect(COLE_PALETTE.N, 22, 4, 1, 4);
+
+    // Refined side-profile head: hair/ear at the rear, two-value face,
+    // slim glasses with a cyan catch, and an explicit nose/chin silhouette.
+    rect('#201711', 11, 12, 4, 7);
+    rect(COLE_PALETTE.f, 13, 12, 9, 8);
+    rect(COLE_PALETTE.S, 15, 12, 8, 7);
+    rect(COLE_PALETTE.S, 22, 14, 3, 2);
+    rect(COLE_PALETTE.S, 23, 15, 3, 2);
+    rect(COLE_PALETTE.f, 13, 14, 2, 3);
+    rect('#5f4233', 13, 15, 1, 1);
+    rect(COLE_PALETTE.g, 16, 13, 8, 2);
+    rect('#273746', 18, 13, 3, 1);
+    rect(COLE_PALETTE.N, 23, 13, 1, 1);
+    rect(COLE_PALETTE.f, 16, 19, 7, 1);
+    rect(COLE_PALETTE.S, 17, 20, 5, 1);
+
+    // Compact scarf wrap leaves breathing room beneath the jaw; the
+    // simulated tail supplies the dramatic motion outside the sprite.
+    rect('#9e2630', 11, 20, 12, 2);
+    rect(COLE_PALETTE.G, 12, 22, 10, 2);
+
+    // Structured shoulders, lapels, waist and two distinct coat tails.
+    poly(COLE_PALETTE.D, [[8, 23], [12, 21], [22, 22], [25, 27], [23, 44], [18, 49], [9, 46], [6, 28]]);
+    poly(COLE_PALETTE.C, [[10, 23], [14, 22], [21, 23], [23, 28], [21, 43], [17, 48], [11, 45], [9, 28]]);
+    poly(COLE_PALETTE.L, [[10, 23], [15, 22], [13, 32], [10, 28]]);
+    poly(COLE_PALETTE.L, [[21, 23], [23, 26], [19, 32], [15, 23]]);
+    rect(COLE_PALETTE.t, 10, 34, 13, 2);
+    rect('#59616d', 17, 34, 3, 2);
+    poly(COLE_PALETTE.D, [[10, 36], [16, 37], [15, 49], [9, 46]]);
+    poly('#141922', [[16, 37], [21, 36], [23, 46], [17, 49]]);
+    rect(COLE_PALETTE.N, 23, 25, 1, 15);
+
+    // Arms counter-swing with the stride; hands remain clearly separate.
+    const arm = Math.round(stride * 2);
+    poly(COLE_PALETTE.C, [[8, 24], [11, 25], [10 + arm, 36], [7 + arm, 36], [5, 28]]);
+    rect(COLE_PALETTE.B, 7 + arm, 35, 4, 4);
+    poly(COLE_PALETTE.C, [[22, 24], [25, 27], [23 - arm, 36], [20 - arm, 35], [20, 27]]);
+    rect(COLE_PALETTE.B, 20 - arm, 35, 4, 4);
+
+    // Anatomical legs: hip → knee → ankle, with a six-phase stride.
+    const front = Math.round(stride * 5);
+    const back = Math.round(-stride * 4);
+    const legTop = airborne ? 46 : 45;
+    poly(COLE_PALETTE.P2, [[14, legTop], [18, legTop], [20 + front, 53], [19 + front, 61], [16 + front, 61], [16, 52]]);
+    poly(COLE_PALETTE.P, [[10, legTop], [14, legTop], [12 + back, 53], [11 + back, 61], [8 + back, 61], [9, 52]]);
+    rect(COLE_PALETTE.B, 15 + front, 60, 7, 3);
+    rect(COLE_PALETTE.B, 7 + back, 60, 7, 3);
+    rect('#343b47', 17 + front, 60, 3, 1);
+  });
+}
+
+export const COLE_FRAMES: { idle: THREE.CanvasTexture[]; walk: THREE.CanvasTexture[]; jump: THREE.CanvasTexture[] } = {
+  idle: [makeColeFrame()],
+  walk: [-1, -0.62, -0.18, 0.18, 0.62, 1].map((stride) => makeColeFrame({ stride })),
+  jump: [makeColeFrame({ stride: 0.45, airborne: true }), makeColeFrame({ stride: 0.15, crouch: 1 })],
+};
+
+/** Mirrors each row left-to-right (used by the compact NPC fallback art). */
 function mirrorRows(rows: string[]): string[] {
   return rows.map((r) => [...r].reverse().join(''));
 }
-
-const COLE_LEGS_IDLE = [
-  '....PPP..PPP............', // 48
-  '....PPP..PPP............', // 49
-  '...PPPP..PPPP...........', // 50
-  '...PPPP..PPPP...........', // 51
-  '..BBBBB..BBBBB..........', // 52 boots
-  '..BBBBB..BBBBB..........', // 53
-];
-
-const COLE_LEGS_WALK_A = [
-  '....PPP....PPP..........', // 48
-  '...PPP......PPP.........', // 49
-  '..PPP........PPP........', // 50
-  '..PP..........PP........', // 51
-  '.BBB..........BBB.......', // 52
-  '.BBB..........BBB.......', // 53
-];
-
-const COLE_LEGS_WALK_B = [
-  '.....PPPPPPP............', // 48
-  '.....PPP.PPP............', // 49
-  '....PPP..PPP............', // 50
-  '....PP....PP............', // 51
-  '..BBBB...BBBB...........', // 52
-  '..BBBB...BBBB...........', // 53
-];
-
-const COLE_LEGS_LAND = [
-  '.....PPPPPPP............', // 48 legs compressed together
-  '....PPPPPPPPP...........', // 49
-  '...PPPPP..PPPPP.........', // 50 knees bent wide
-  '...PPPP....PPPP.........', // 51
-  '..BBBBB....BBBBB........', // 52 boots, knees apart
-  '..BBBBB....BBBBB........', // 53
-];
-
-// Jump pose: legs tucked and raised off the ground line.
-const COLE_LEGS_JUMP = [
-  '....PPPP..PPPP..........', // 48 raised
-  '...PPPP....PPPP.........', // 49
-  '..PPPP......PPPP........', // 50 knees bent forward
-  '..BBP........PBB........', // 51 boots tucked
-  '..BB.........BB.........', // 52
-  '........................', // 53 airborne spacing
-];
-
-export const COLE_FRAMES: { idle: THREE.CanvasTexture[]; walk: THREE.CanvasTexture[]; jump: THREE.CanvasTexture[] } = {
-  idle: framesFromRows(COLE_W, [[...COLE_BODY_TOGETHER, ...COLE_LEGS_IDLE]], COLE_PALETTE),
-  // 4-phase walk cycle: contact A → pass → contact B (mirror of A) → pass
-  walk: framesFromRows(
-    COLE_W,
-    [
-      [...COLE_BODY_TOGETHER, ...COLE_LEGS_WALK_A],
-      [...COLE_BODY_TOGETHER, ...COLE_LEGS_WALK_B],
-      [...COLE_BODY_TOGETHER, ...mirrorRows(COLE_LEGS_WALK_A)],
-      [...COLE_BODY_TOGETHER, ...COLE_LEGS_WALK_B],
-    ],
-    COLE_PALETTE,
-  ),
-  jump: framesFromRows(
-    COLE_W,
-    [
-      [...COLE_BODY_TOGETHER, ...COLE_LEGS_JUMP],
-      [...COLE_BODY_TOGETHER, ...COLE_LEGS_LAND],
-    ],
-    COLE_PALETTE,
-  ),
-};
 
 /* ------------------------------------------------------------------ */
 /* Sector 7 Enforcer: 24×30. Armoured, heavy-visor ground unit.         */
@@ -211,6 +170,7 @@ export const ENFORCER_H = 30;
 
 export const ENFORCER_PALETTE: Record<string, string> = {
   M: '#3a4250', // helmet / armour plate
+  A: '#667180', // hard armour edge
   m: '#2a3140', // plate shade
   V: '#ff3b46', // visor glow
   J: '#262b35', // jacket
@@ -222,7 +182,7 @@ export const ENFORCER_PALETTE: Record<string, string> = {
 const ENFORCER_BODY = [
   '........MMMMMMMM........', // 0
   '.......MMMMMMMMM........', // 1  dome top
-  '......MMMMMMMMMM........', // 2
+  '......AMMMMMMMMA........', // 2
   '......MMMMMMMMMM........', // 3
   '......MMMMMMMMMM........', // 4
   '......VVVVVVVVVV........', // 5  visor slit glows
@@ -232,7 +192,7 @@ const ENFORCER_BODY = [
   '.......JJJJJJJJ.........', // 9  collar
   '......JJJJJJJJJJ........', // 10 shoulders
   '.....JJJJJJJJJJJ........', // 11
-  '....mJJJJJJJJJJm........', // 12 pauldron shadows
+  '....AJJJJJJJJJJA........', // 12 pauldron edges
   '....JJJJJJJJJJJJ........', // 13
   '....JJjJJJJJJjJJ........', // 14 chest plate seam
   '....JJjJJJJJJjJJ........', // 15
@@ -285,6 +245,7 @@ export const DRONE_PALETTE: Record<string, string> = {
   D: '#2b313c', // hull
   d: '#161a21', // hull shadow
   V: '#36e0ff', // sensor eye
+  R: '#ff3548', // hostile sensor core
 };
 
 const DRONE_BODY = [
@@ -293,7 +254,7 @@ const DRONE_BODY = [
   '...dDDDDDDd.....', // 2 top hull
   '..dDDDDDDDDd....', // 3
   '..DDDDDDDDDD....', // 4
-  '..DDVVVVVVDD....', // 5 sensor eye band
+  '..DDVVRVVVDD....', // 5 sensor eye band + red lock core
   '..dDDDDDDDDd....', // 6
   '...dDDDDDDd.....', // 7
   '....dDDDDd......', // 8 belly
@@ -318,7 +279,7 @@ function droneRotorFrame(_alt: boolean): string[] {
     '...dDDDDDDd.....',
     '..dDDDDDDDDd....',
     '..DDDDDDDDDD....',
-    '..DDVVVVVVDD....',
+    '..DDVVRVVVDD....',
     '..dDDDDDDDDd....',
     '...dDDDDDDd.....',
     '....dDDDDd......',
@@ -472,9 +433,12 @@ export const LYRA_PALETTE: Record<string, string> = {
   G: '#bff5ff', // face glow core (brighter)
   h: '#2a3a4a', // hood inner shadow
   s: '#1a2230', // cloak seam
+  m: '#562044', // restrained magenta cloak lining
   B: '#0d1218', // boots
 };
 
+// The hand-shaped hood/cloak rows intentionally vary by a pixel at the right
+// edge; normalize that transparent padding before the strict frame validator.
 const LYRA_IDLE = [
   '......cccc......', // 0 hood apex
   '.....cC CCc.....', // 1
@@ -490,13 +454,13 @@ const LYRA_IDLE = [
   '..ccssssssscc..', // 11 cloak shoulders
   '..cssssssssc...', // 12
   '.csssssssssc...', // 13
-  '.csssssssssc...', // 14
-  '.csssssssssc...', // 15
+  '.cssssssssmc...', // 14
+  '.cssssssssmc...', // 15
   '.csssssssssc...', // 16
   '.csssssssssc...', // 17
   '.cssssssssc....', // 18
   '.cssssssssc....', // 19
-  '.cssssssssc....', // 20
+  '.csssssssmc....', // 20
   '..cssssssc.....', // 21
   '..cssssssc.....', // 22
   '..cssssssc.....', // 23
@@ -508,7 +472,7 @@ const LYRA_IDLE = [
   '.cc.....ccc....', // 29
   '.cc.....ccc....', // 30
   '.BB.....BBB....', // 31 feet
-];
+].map((row) => row.padEnd(LYRA_W, '.'));
 
 export function makeLyraFrame(): THREE.CanvasTexture {
   return framesFromRows(LYRA_W, [LYRA_IDLE], LYRA_PALETTE)[0];

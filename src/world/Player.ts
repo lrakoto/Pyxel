@@ -8,7 +8,7 @@ import { COLE_W, COLE_H, COLE_FRAMES } from './sprites';
  * Detective Cole: side-profile pixel sprite facing his direction of travel
  * (mirrored when he turns) — wide-brim hat, dark trench coat with lapel and
  * back-seam shading, and a scarf wrapped at the neck. Body frames are drawn
- * at 24x54 in sprites.ts (the detail level the Aseprite pipeline imports at),
+ * at 32x64 in sprites.ts (the detail level the Aseprite pipeline imports at),
  * so a compiled real sheet is a content drop with the same proportions and
  * anchor points. The loose scarf tail is a separate cloth ribbon (see Scarf
  * below) so it can react to wind/gravity independently of the body.
@@ -91,10 +91,10 @@ const RIM_GLSL = `
 const SPEED = 4.2;
 const WORLD_BOUND = 16;
 /** Seconds per walk frame — cadence of the 4-phase cycle. */
-const WALK_FRAME = 0.16;
+const WALK_FRAME = 0.11;
 /** How long the land-impact pose holds before settling to idle. */
 const LAND_TIME = 0.12;
-const HEIGHT = 1.7;
+const HEIGHT = 1.92;
 // Jump: tuned so a tap clears ~1.4 world units and hangs for ~0.7s.
 const JUMP_V = 6.4;
 const GRAVITY = 18;
@@ -295,7 +295,7 @@ class Scarf {
 }
 
 // World-space y of Cole's neck, where the scarf hangs from.
-const NECK_Y = HEIGHT * 0.695;
+const NECK_Y = HEIGHT * 0.65;
 
 export class Player {
   readonly mesh: THREE.Mesh;

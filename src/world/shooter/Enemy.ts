@@ -166,7 +166,21 @@ export class Enemy {
     if (this.kind === 'ground') this.y = Math.max(this.spec.worldH / 2, this.y);
 
     this.mesh.position.set(this.x, this.y, 0);
-    this.mesh.scale.x = this.facing >= 0 ? 1 : -1;
+    if (this.kind === 'ground') {
+      // Heavy units compress on each planted step instead of gliding as a
+      // rigid card. The slight counter-rotation makes the armour feel massive.
+      const stride = Math.sin(this.t * 6);
+      const compression = Math.abs(stride) * 0.025;
+      this.mesh.scale.set((this.facing >= 0 ? 1 : -1) * (1 + compression), 1 - compression, 1);
+      this.mesh.rotation.z = -this.facing * stride * 0.012;
+    } else {
+      // Drones bank into horizontal pursuit and breathe vertically on their
+      // thrusters, separating their motion language from ground enemies.
+      const bank = THREE.MathUtils.clamp((targetX - this.x) * 0.035, -0.14, 0.14);
+      const pulse = 1 + Math.sin(this.t * 11) * 0.025;
+      this.mesh.scale.set(this.facing >= 0 ? pulse : -pulse, 2 - pulse, 1);
+      this.mesh.rotation.z = -bank;
+    }
     this.animator?.update(dt);
     if (!this.animator) {
       // Procedural frame: cycle the walk loop. Drones use the same timer —
